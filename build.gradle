@@ -14,10 +14,12 @@
 // limitations under the License.
 
 buildscript {
-  repositories {
-    mavenCentral()
-  }
   apply from: file('gradle/buildscript.gradle'), to: buildscript
+  repositories {
+    maven {
+      url = "$repoUrl"
+    }
+  }
 }
 
 def slf4jlog4j='org.slf4j:slf4j-log4j12:1.7.6'
@@ -25,7 +27,9 @@ def slf4jlog4j='org.slf4j:slf4j-log4j12:1.7.6'
 allprojects {
   apply plugin: 'idea'
   repositories {
-    mavenCentral()
+    maven {
+      url = "$repoUrl"
+    }
   }
 }
 
@@ -204,7 +208,7 @@ project(':core') {
   dependencies {
     compile project(':clients')
     compile "org.scala-lang:scala-library:$scalaVersion"
-    compile 'org.apache.zookeeper:zookeeper:3.4.6'
+    compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
     compile 'com.101tec:zkclient:0.3'
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile 'net.sf.jopt-simple:jopt-simple:3.2'
@@ -292,11 +296,14 @@ project(':contrib:hadoop-consumer') {
   dependencies {
     compile project(':core')
     compile "org.apache.avro:avro:1.4.0"
-    compile "org.apache.pig:pig:0.8.0"
+    compile "org.apache.pig:pig:$pigVersion:h2@jar"
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
     compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
-    compile "org.apache.hadoop:hadoop-core:0.20.2"
+    compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
+      { exclude group: 'org.apache.avro', module: 'avro'}
+    compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
+    compile files('lib/piggybank.jar')
   }
 
   configurations {
@@ -315,13 +322,15 @@ project(':contrib:hadoop-producer') {
 
   dependencies {
     compile project(':core')
-    compile("org.apache.avro:avro:1.4.0") { force = true }
-    compile "org.apache.pig:pig:0.8.0"
+    compile "org.apache.avro:avro:1.4.0"
+    compile "org.apache.pig:pig:$pigVersion:h2@jar"
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
     compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
-    compile "org.apache.hadoop:hadoop-core:0.20.2"
-    compile "org.apache.pig:piggybank:0.12.0"
+    compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
+      { exclude group: 'org.apache.avro', module: 'avro'}
+    compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
+    compile files('lib/piggybank.jar')
   }
 
   configurations {
