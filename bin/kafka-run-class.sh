@@ -22,6 +22,12 @@ fi
 
 base_dir=$(dirname $0)/..
 
+# run kafka-env.sh
+KAFKA_ENV=$base_dir/config/kafka-env.sh
+if [ -f $KAFKA_ENV ]; then
+    . $KAFKA_ENV
+fi
+
 # create logs directory
 if [ "x$LOG_DIR" = "x" ]; then
     LOG_DIR="$base_dir/logs"
