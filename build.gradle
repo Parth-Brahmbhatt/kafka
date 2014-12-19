@@ -195,7 +195,7 @@ tasks.create(name: "testAll", dependsOn: ['test_core_2_8_0', 'test_core_2_9_1', 
 tasks.create(name: "releaseTarGzAll", dependsOn: ['releaseTarGz_2_8_0', 'releaseTarGz_2_9_1', 'releaseTarGz_2_9_2', 'releaseTarGz_2_10_4']) {
 }
 
-tasks.create(name: "uploadArchivesAll", dependsOn: ['uploadCoreArchives_2_8_0', 'uploadCoreArchives_2_9_1', 'uploadCoreArchives_2_9_2', 'uploadCoreArchives_2_10_4', 'perf:uploadArchives', 'examples:uploadArchives', 'contrib:hadoop-consumer:uploadArchives', 'contrib:hadoop-producer:uploadArchives']) {
+tasks.create(name: "uploadArchivesAll", dependsOn: ['uploadCoreArchives_2_8_0', 'uploadCoreArchives_2_9_1', 'uploadCoreArchives_2_9_2', 'uploadCoreArchives_2_10_4', 'client:uploadArchives', 'examples:uploadArchives', 'contrib:hadoop-consumer:uploadArchives', 'contrib:hadoop-producer:uploadArchives']) {
 }
 
 project(':core') {
