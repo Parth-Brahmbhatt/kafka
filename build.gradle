@@ -297,7 +297,7 @@ project(':contrib:hadoop-consumer') {
     compile project(':core')
     compile "org.apache.avro:avro:1.4.0"
     compile "org.apache.pig:pig:$pigVersion:h2@jar"
-    compile ("org.apache.pig:piggybank:$piggyBankVersion")
+    compile ("org.apache.pig:piggybank:$pigVersion")
      { exclude group: 'org.apache.avro', module: 'avro' }
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
@@ -342,7 +342,7 @@ project(':contrib:hadoop-producer') {
     compile project(':core')
     compile "org.apache.avro:avro:1.4.0"
     compile "org.apache.pig:pig:$pigVersion:h2@jar"
-    compile ("org.apache.pig:piggybank:$piggyBankVersion")
+    compile ("org.apache.pig:piggybank:$pigVersion")
      { exclude group: 'org.apache.avro', module: 'avro' }
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
