@@ -61,6 +61,7 @@ public final class RecordAccumulator {
     private final BufferPool free;
     private final Time time;
     private final ConcurrentMap<TopicPartition, Deque<RecordBatch>> batches;
+    private long batchExpirationMs;
 
     /**
      * Create a new record accumulator
@@ -72,6 +73,8 @@ public final class RecordAccumulator {
      *        latency for potentially better throughput due to more batching (and hence fewer, larger requests).
      * @param retryBackoffMs An artificial delay time to retry the produce request upon receiving an error. This avoids
      *        exhausting all retries in a short period of time.
+     * @param batchExpirationMs when this much time has been elapsed since last retry attempt and still no leader node
+     *        can be found for a batch, the batch will be discarded.
      * @param blockOnBufferFull If true block when we are out of memory; if false throw an exception when we are out of
      *        memory
      * @param metrics The metrics
@@ -81,6 +84,7 @@ public final class RecordAccumulator {
                              long totalSize,
                              long lingerMs,
                              long retryBackoffMs,
+                             long batchExpirationMs,
                              boolean blockOnBufferFull,
                              Metrics metrics,
                              Time time) {
@@ -89,6 +93,7 @@ public final class RecordAccumulator {
         this.batchSize = batchSize;
         this.lingerMs = lingerMs;
         this.retryBackoffMs = retryBackoffMs;
+        this.batchExpirationMs = batchExpirationMs;
         this.batches = new CopyOnWriteMap<TopicPartition, Deque<RecordBatch>>();
         this.free = new BufferPool(totalSize, batchSize, blockOnBufferFull, metrics, time);
         this.time = time;
@@ -210,6 +215,15 @@ public final class RecordAccumulator {
             Node leader = cluster.leaderFor(part);
             if (leader == null) {
                 unknownLeadersExist = true;
+                RecordBatch recordBatch = deque.peekFirst();
+                final long MAX_EXPIRATION_MS = 60 * 60 * 1000;//probably needs a configuration, but setting it to 1 hour for starters.
+                if(recordBatch.isExpired(nowMs, MAX_EXPIRATION_MS)) {
+                    recordBatch = deque.pollFirst();
+                    recordBatch.records.close();
+                    recordBatch.done(0, new RuntimeException("No leader node found even after waiting for "
+                            + MAX_EXPIRATION_MS + " milliseconds."));
+                    deallocate(recordBatch);
+                }
             } else if (!readyNodes.contains(leader)) {
                 synchronized (deque) {
                     RecordBatch batch = deque.peekFirst();

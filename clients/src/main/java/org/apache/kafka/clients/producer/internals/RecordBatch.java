@@ -19,6 +19,7 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.MemoryRecords;
 import org.apache.kafka.common.record.Record;
+import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,6 +95,10 @@ public final class RecordBatch {
                 log.error("Error executing user-provided callback on message for topic-partition {}:", topicPartition, e);
             }
         }
+    }
+
+    public boolean isExpired(long now, long maxExpirationMs) {
+        return now >= (lastAttemptMs + maxExpirationMs);
     }
 
     /**

@@ -150,6 +150,7 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
                                                  this.totalMemorySize,
                                                  config.getLong(ProducerConfig.LINGER_MS_CONFIG),
                                                  retryBackoffMs,
+                                                 config.getLong(ProducerConfig.BATCH_EXPIRATION_MS_CONFIG),
                                                  config.getBoolean(ProducerConfig.BLOCK_ON_BUFFER_FULL_CONFIG),
                                                  metrics,
                                                  time);

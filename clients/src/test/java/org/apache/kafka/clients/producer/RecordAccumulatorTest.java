@@ -59,11 +59,12 @@ public class RecordAccumulatorTest {
     private int msgSize = Records.LOG_OVERHEAD + Record.recordSize(key, value);
     private Cluster cluster = new Cluster(Arrays.asList(node1, node2), Arrays.asList(part1, part2, part3));
     private Metrics metrics = new Metrics(time);
+    private Long batchExpirationMs = 60L * 60L * 1000L;
 
     @Test
     public void testFull() throws Exception {
         long now = time.milliseconds();
-        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, false, metrics, time);
+        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, batchExpirationMs, false, metrics, time);
         int appends = 1024 / msgSize;
         for (int i = 0; i < appends; i++) {
             accum.append(tp1, key, value, CompressionType.NONE, null);
@@ -86,7 +87,7 @@ public class RecordAccumulatorTest {
     @Test
     public void testAppendLarge() throws Exception {
         int batchSize = 512;
-        RecordAccumulator accum = new RecordAccumulator(batchSize, 10 * 1024, 0L, 100L, false, metrics, time);
+        RecordAccumulator accum = new RecordAccumulator(batchSize, 10 * 1024, 0L, 100L, batchExpirationMs, false, metrics, time);
         accum.append(tp1, key, new byte[2 * batchSize], CompressionType.NONE, null);
         assertEquals("Our partition's leader should be ready", Collections.singleton(node1), accum.ready(cluster, time.milliseconds()).readyNodes);
     }
@@ -94,7 +95,7 @@ public class RecordAccumulatorTest {
     @Test
     public void testLinger() throws Exception {
         long lingerMs = 10L;
-        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, lingerMs, 100L, false, metrics, time);
+        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, lingerMs, 100L, batchExpirationMs, false, metrics, time);
         accum.append(tp1, key, value, CompressionType.NONE, null);
         assertEquals("No partitions should be ready", 0, accum.ready(cluster, time.milliseconds()).readyNodes.size());
         time.sleep(10);
@@ -110,8 +111,18 @@ public class RecordAccumulatorTest {
     }
 
     @Test
+    public void testExpiration() throws Exception {
+        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, batchExpirationMs, false, metrics, time);
+        accum.append( new TopicPartition("invalid", 1), key, value, CompressionType.NONE, null);
+        assertTrue("verifying that recordbatch was added.", accum.hasUnsent());
+        time.sleep(60 * 60 * 1000);
+        assertEquals("no leader should exist for invalid topic", true, accum.ready(cluster, time.milliseconds()).unknownLeadersExist);
+        assertFalse("no unsent messages should exist", accum.hasUnsent());
+    }
+
+    @Test
     public void testPartialDrain() throws Exception {
-        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, false, metrics, time);
+        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, batchExpirationMs, false, metrics, time);
         int appends = 1024 / msgSize + 1;
         List<TopicPartition> partitions = asList(tp1, tp2);
         for (TopicPartition tp : partitions) {
@@ -129,7 +140,7 @@ public class RecordAccumulatorTest {
         final int numThreads = 5;
         final int msgs = 10000;
         final int numParts = 2;
-        final RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 0L, 100L, true, metrics, time);
+        final RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 0L, 100L, batchExpirationMs, true, metrics, time);
         List<Thread> threads = new ArrayList<Thread>();
         for (int i = 0; i < numThreads; i++) {
             threads.add(new Thread() {
@@ -169,7 +180,7 @@ public class RecordAccumulatorTest {
     public void testNextReadyCheckDelay() throws Exception {
         // Next check time will use lingerMs since this test won't trigger any retries/backoff
         long lingerMs = 10L;
-        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, lingerMs, 100L, false, metrics, time);
+        RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, lingerMs, 100L, batchExpirationMs, false, metrics, time);
         // Just short of going over the limit so we trigger linger time
         int appends = 1024 / msgSize;
 
