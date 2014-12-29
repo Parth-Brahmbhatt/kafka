@@ -73,6 +73,7 @@ public final class ProducerRecord<K, V> {
     }
 
     /**
+
      * The key (or null if no key is specified)
      */
     public K key() {
@@ -98,5 +99,29 @@ public final class ProducerRecord<K, V> {
         String key = this.key == null ? "null" : this.key.toString();
         String value = this.value == null ? "null" : this.value.toString();
         return "ProducerRecord(topic=" + topic + ", partition=" + partition + ", key=" + key + ", value=" + value;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ProducerRecord)) return false;
+
+        ProducerRecord that = (ProducerRecord) o;
+
+        if (!key.equals(that.key)) return false;
+        if (!partition.equals(that.partition)) return false;
+        if (!topic.equals(that.topic)) return false;
+        if (!value.equals(that.value)) return false;
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = topic.hashCode();
+        result = 31 * result + partition.hashCode();
+        result = 31 * result + key.hashCode();
+        result = 31 * result + value.hashCode();
+        return result;
     }
 }
