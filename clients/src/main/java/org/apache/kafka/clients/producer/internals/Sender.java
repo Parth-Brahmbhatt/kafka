@@ -79,6 +79,9 @@ public class Sender implements Runnable {
     /* true while the sender thread is still running */
     private volatile boolean running;
 
+    /* true when the caller wants to ignore all unsent/inflight messages and force close.  */
+    private volatile boolean forceClose;
+
     /* metrics */
     private final SenderMetrics sensors;
 
@@ -123,7 +126,7 @@ public class Sender implements Runnable {
         // okay we stopped accepting requests but there may still be
         // requests in the accumulator or waiting for acknowledgment,
         // wait until these are completed.
-        while (this.accumulator.hasUnsent() || this.client.inFlightRequestCount() > 0) {
+        while (!this.forceClose && (this.accumulator.hasUnsent() || this.client.inFlightRequestCount() > 0)) {
             try {
                 run(time.milliseconds());
             } catch (Exception e) {
@@ -197,6 +200,14 @@ public class Sender implements Runnable {
         this.running = false;
         this.accumulator.close();
         this.wakeup();
+    }
+
+    /**
+     * Closes the sender completing without sending out any pending messages.
+     */
+    public void forceClose(){
+        this.forceClose = true;
+        initiateClose();
     }
 
     private void handleDisconnect(ClientResponse response, long now) {

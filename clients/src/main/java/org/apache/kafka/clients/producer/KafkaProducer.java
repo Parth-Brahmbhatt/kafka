@@ -364,17 +364,27 @@ public class KafkaProducer<K,V> implements Producer<K,V> {
      */
     @Override
     public void close() {
+        close(0, TimeUnit.MILLISECONDS);
+    }
+
+    @Override
+    public void close(long timeout, TimeUnit timeUnit) {
         log.trace("Closing the Kafka producer.");
         this.sender.initiateClose();
         try {
-            this.ioThread.join();
+            this.ioThread.join(TimeUnit.MILLISECONDS.toMillis(timeout));
         } catch (InterruptedException e) {
             throw new KafkaException(e);
         }
+
+        if (this.ioThread.isAlive()) {
+            this.sender.forceClose();
+        }
+
         this.metrics.close();
         this.keySerializer.close();
         this.valueSerializer.close();
-        log.debug("The Kafka producer has closed.");
+        log.trace("The Kafka producer has closed.");
     }
 
     private static class FutureFailure implements Future<RecordMetadata> {

@@ -20,6 +20,7 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.PartitionInfo;
@@ -61,5 +62,11 @@ public interface Producer<K,V> extends Closeable {
      * Close this producer
      */
     public void close();
+
+    /**
+     * Tries to close the producer cleanly until timeout is expired,force closes the producer after the timeout expires
+     * discarding any pending messages.
+     */
+    public void close(long timeout, TimeUnit unit);
 
 }
