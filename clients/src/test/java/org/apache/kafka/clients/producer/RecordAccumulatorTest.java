@@ -115,7 +115,7 @@ public class RecordAccumulatorTest {
         RecordAccumulator accum = new RecordAccumulator(1024, 10 * 1024, 10L, 100L, batchExpirationMs, false, metrics, time);
         accum.append( new TopicPartition("invalid", 1), key, value, CompressionType.NONE, null);
         assertTrue("verifying that recordbatch was added.", accum.hasUnsent());
-        time.sleep(60 * 60 * 1000);
+        time.sleep(batchExpirationMs);
         assertEquals("no leader should exist for invalid topic", true, accum.ready(cluster, time.milliseconds()).unknownLeadersExist);
         assertFalse("no unsent messages should exist", accum.hasUnsent());
     }

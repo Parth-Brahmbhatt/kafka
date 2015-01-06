@@ -213,19 +213,18 @@ public final class RecordAccumulator {
             Deque<RecordBatch> deque = entry.getValue();
 
             Node leader = cluster.leaderFor(part);
-            if (leader == null) {
-                unknownLeadersExist = true;
-                RecordBatch recordBatch = deque.peekFirst();
-                final long MAX_EXPIRATION_MS = 60 * 60 * 1000;//probably needs a configuration, but setting it to 1 hour for starters.
-                if(recordBatch.isExpired(nowMs, MAX_EXPIRATION_MS)) {
-                    recordBatch = deque.pollFirst();
-                    recordBatch.records.close();
-                    recordBatch.done(0, new RuntimeException("No leader node found even after waiting for "
-                            + MAX_EXPIRATION_MS + " milliseconds."));
-                    deallocate(recordBatch);
-                }
-            } else if (!readyNodes.contains(leader)) {
-                synchronized (deque) {
+            synchronized (deque) {
+                if (leader == null) {
+                    unknownLeadersExist = true;
+                    RecordBatch recordBatch = deque.peekFirst();
+                    if (recordBatch.isExpired(nowMs, this.batchExpirationMs)) {
+                        recordBatch = deque.pollFirst();
+                        recordBatch.records.close();
+                        recordBatch.done(0, new RuntimeException("No leader node found even after waiting for "
+                                + this.batchExpirationMs + " milliseconds."));
+                        deallocate(recordBatch);
+                    }
+                } else if (!readyNodes.contains(leader)) {
                     RecordBatch batch = deque.peekFirst();
                     if (batch != null) {
                         boolean backingOff = batch.attempts > 0 && batch.lastAttemptMs + retryBackoffMs > nowMs;
