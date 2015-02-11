@@ -3,32 +3,30 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * 
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
+package org.apache.kafka.common.metrics;
 
-package org.apache.kafka.clients.producer;
-
+import java.util.List;
 import java.util.Map;
 
-public class ByteArraySerializer implements Serializer<byte[]> {
+public class FakeMetricsReporter implements MetricsReporter {
 
     @Override
-    public void configure(Map<String, ?> configs) {
-        // nothing to do
-    }
+    public void configure(Map<String, ?> configs) {}
 
     @Override
-    public byte[] serialize(String topic, byte[] data, boolean isKey) {
-        return data;
-    }
+    public void init(List<KafkaMetric> metrics) {}
 
     @Override
-    public void close() {
-        // nothing to do
-    }
+    public void metricChange(KafkaMetric metric) {}
+
+    @Override
+    public void close() {}
+
 }

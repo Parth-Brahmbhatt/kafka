@@ -28,32 +28,33 @@ import org.apache.kafka.common.protocol.types.Schema;
 import org.apache.kafka.common.protocol.types.Struct;
 
 public class MetadataResponse extends AbstractRequestResponse {
-    private static Schema curSchema = ProtoUtils.currentResponseSchema(ApiKeys.METADATA.id);
-    private static String BROKERS_KEY_NAME = "brokers";
-    private static String TOPIC_METATDATA_KEY_NAME = "topic_metadata";
+    
+    private static final Schema CURRENT_SCHEMA = ProtoUtils.currentResponseSchema(ApiKeys.METADATA.id);
+    private static final String BROKERS_KEY_NAME = "brokers";
+    private static final String TOPIC_METATDATA_KEY_NAME = "topic_metadata";
 
     // broker level field names
-    private static String NODE_ID_KEY_NAME = "node_id";
-    private static String HOST_KEY_NAME = "host";
-    private static String PORT_KEY_NAME = "port";
+    private static final String NODE_ID_KEY_NAME = "node_id";
+    private static final String HOST_KEY_NAME = "host";
+    private static final String PORT_KEY_NAME = "port";
 
     // topic level field names
-    private static String TOPIC_ERROR_CODE_KEY_NAME = "topic_error_code";
-    private static String TOPIC_KEY_NAME = "topic";
-    private static String PARTITION_METADATA_KEY_NAME = "partition_metadata";
+    private static final String TOPIC_ERROR_CODE_KEY_NAME = "topic_error_code";
+    private static final String TOPIC_KEY_NAME = "topic";
+    private static final String PARTITION_METADATA_KEY_NAME = "partition_metadata";
 
     // partition level field names
-    private static String PARTITION_ERROR_CODE_KEY_NAME = "partition_error_code";
-    private static String PARTITION_KEY_NAME = "partition_id";
-    private static String LEADER_KEY_NAME = "leader";
-    private static String REPLICAS_KEY_NAME = "replicas";
-    private static String ISR_KEY_NAME = "isr";
+    private static final String PARTITION_ERROR_CODE_KEY_NAME = "partition_error_code";
+    private static final String PARTITION_KEY_NAME = "partition_id";
+    private static final String LEADER_KEY_NAME = "leader";
+    private static final String REPLICAS_KEY_NAME = "replicas";
+    private static final String ISR_KEY_NAME = "isr";
 
     private final Cluster cluster;
     private final Map<String, Errors> errors;
 
     public MetadataResponse(Cluster cluster) {
-        super(new Struct(curSchema));
+        super(new Struct(CURRENT_SCHEMA));
 
         List<Struct> brokerArray = new ArrayList<Struct>();
         for (Node node: cluster.nodes()) {
@@ -68,12 +69,12 @@ public class MetadataResponse extends AbstractRequestResponse {
         List<Struct> topicArray = new ArrayList<Struct>();
         for (String topic: cluster.topics()) {
             Struct topicData = struct.instance(TOPIC_METATDATA_KEY_NAME);
-            topicData.set(TOPIC_ERROR_CODE_KEY_NAME, (short)0);  // no error
+            topicData.set(TOPIC_ERROR_CODE_KEY_NAME, Errors.NONE.code());
             topicData.set(TOPIC_KEY_NAME, topic);
             List<Struct> partitionArray = new ArrayList<Struct>();
             for (PartitionInfo fetchPartitionData : cluster.partitionsForTopic(topic)) {
                 Struct partitionData = topicData.instance(PARTITION_METADATA_KEY_NAME);
-                partitionData.set(PARTITION_ERROR_CODE_KEY_NAME, (short)0);  // no error
+                partitionData.set(PARTITION_ERROR_CODE_KEY_NAME, Errors.NONE.code());
                 partitionData.set(PARTITION_KEY_NAME, fetchPartitionData.partition());
                 partitionData.set(LEADER_KEY_NAME, fetchPartitionData.leader().id());
                 ArrayList<Integer> replicas = new ArrayList<Integer>();
@@ -147,6 +148,6 @@ public class MetadataResponse extends AbstractRequestResponse {
     }
 
     public static MetadataResponse parse(ByteBuffer buffer) {
-        return new MetadataResponse(((Struct) curSchema.read(buffer)));
+        return new MetadataResponse((Struct) CURRENT_SCHEMA.read(buffer));
     }
 }

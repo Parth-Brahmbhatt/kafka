@@ -31,6 +31,7 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.MetricConfig;
+import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.MemoryRecords;
@@ -76,6 +77,7 @@ public final class RecordAccumulator {
      *        memory
      * @param metrics The metrics
      * @param time The time instance to use
+     * @param metricTags additional key/value attributes of the metric
      */
     public RecordAccumulator(int batchSize,
                              long totalSize,
@@ -83,40 +85,44 @@ public final class RecordAccumulator {
                              long retryBackoffMs,
                              boolean blockOnBufferFull,
                              Metrics metrics,
-                             Time time) {
+                             Time time,
+                             Map<String, String> metricTags) {
         this.drainIndex = 0;
         this.closed = false;
         this.batchSize = batchSize;
         this.lingerMs = lingerMs;
         this.retryBackoffMs = retryBackoffMs;
         this.batches = new CopyOnWriteMap<TopicPartition, Deque<RecordBatch>>();
-        this.free = new BufferPool(totalSize, batchSize, blockOnBufferFull, metrics, time);
+        String metricGrpName = "producer-metrics";
+        this.free = new BufferPool(totalSize, batchSize, blockOnBufferFull, metrics, time , metricGrpName , metricTags);
         this.time = time;
-        registerMetrics(metrics);
+        registerMetrics(metrics, metricGrpName, metricTags);
     }
 
-    private void registerMetrics(Metrics metrics) {
-        metrics.addMetric("waiting-threads",
-                          "The number of user threads blocked waiting for buffer memory to enqueue their records",
-                          new Measurable() {
-                              public double measure(MetricConfig config, long now) {
-                                  return free.queued();
-                              }
-                          });
-        metrics.addMetric("buffer-total-bytes",
-                          "The maximum amount of buffer memory the client can use (whether or not it is currently used).",
-                          new Measurable() {
-                              public double measure(MetricConfig config, long now) {
-                                  return free.totalMemory();
-                              }
-                          });
-        metrics.addMetric("buffer-available-bytes",
-                          "The total amount of buffer memory that is not being used (either unallocated or in the free list).",
-                          new Measurable() {
-                              public double measure(MetricConfig config, long now) {
-                                  return free.availableMemory();
-                              }
-                          });
+    private void registerMetrics(Metrics metrics, String metricGrpName, Map<String, String> metricTags) {
+
+        MetricName metricName = new MetricName("waiting-threads", metricGrpName, "The number of user threads blocked waiting for buffer memory to enqueue their records", metricTags);
+        Measurable waitingThreads = new Measurable() {
+            public double measure(MetricConfig config, long now) {
+                return free.queued();
+            }
+        };
+        metrics.addMetric(metricName, waitingThreads);
+                 
+        metricName = new MetricName("buffer-total-bytes", metricGrpName, "The maximum amount of buffer memory the client can use (whether or not it is currently used).", metricTags);
+        Measurable totalBytes = new Measurable() {
+            public double measure(MetricConfig config, long now) {
+                return free.totalMemory();
+            }
+        };
+        metrics.addMetric(metricName, totalBytes);
+        metricName = new MetricName("buffer-available-bytes", metricGrpName, "The total amount of buffer memory that is not being used (either unallocated or in the free list).", metricTags);
+        Measurable availableBytes = new Measurable() {
+            public double measure(MetricConfig config, long now) {
+                return free.availableMemory();
+            }
+        };
+        metrics.addMetric(metricName, availableBytes);
     }
 
     /**
@@ -223,8 +229,7 @@ public final class RecordAccumulator {
                         boolean sendable = full || expired || exhausted || closed;
                         if (sendable && !backingOff) {
                             readyNodes.add(leader);
-                        }
-                        else {
+                        } else {
                             // Note that this results in a conservative estimate since an un-sendable partition may have
                             // a leader that will later be found to have sendable data. However, this is good enough
                             // since we'll just wake up and then sleep again for the remaining time.

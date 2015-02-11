@@ -21,6 +21,8 @@ import java.util.Properties
 import kafka.message.{MessageSet, Message}
 import kafka.consumer.ConsumerConfig
 import kafka.utils.{VerifiableProperties, ZKConfig, Utils}
+import kafka.message.NoCompressionCodec
+import kafka.message.BrokerCompressionCodec
 
 /**
  * Configuration settings for the kafka server
@@ -35,13 +37,13 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   private def getLogRetentionTimeMillis(): Long = {
     val millisInMinute = 60L * 1000L
     val millisInHour = 60L * millisInMinute
-    
+
     if(props.containsKey("log.retention.ms")){
        props.getIntInRange("log.retention.ms", (1, Int.MaxValue))
     }
     else if(props.containsKey("log.retention.minutes")){
        millisInMinute * props.getIntInRange("log.retention.minutes", (1, Int.MaxValue))
-    } 
+    }
     else {
        millisInHour * props.getIntInRange("log.retention.hours", 24*7, (1, Int.MaxValue))
     }
@@ -49,7 +51,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   private def getLogRollTimeMillis(): Long = {
     val millisInHour = 60L * 60L * 1000L
-    
+
     if(props.containsKey("log.roll.ms")){
        props.getIntInRange("log.roll.ms", (1, Int.MaxValue))
     }
@@ -71,8 +73,14 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /*********** General Configuration ***********/
 
-  /* the broker id for this server */
-  val brokerId: Int = props.getIntInRange("broker.id", (0, Int.MaxValue))
+  /* Max number that can be used for a broker.id  */
+  val MaxReservedBrokerId = props.getIntInRange("reserved.broker.max.id", 1000, (0, Int.MaxValue))
+
+  /* The broker id for this server.
+   * To avoid conflicts between zookeeper generated brokerId and user's config.brokerId
+   * added MaxReservedBrokerId and zookeeper sequence starts from MaxReservedBrokerId + 1.
+   */
+  var brokerId: Int = if (props.containsKey("broker.id")) props.getIntInRange("broker.id", (0, MaxReservedBrokerId)) else -1
 
   /* the maximum size of message that the server can receive */
   val messageMaxBytes = props.getIntInRange("message.max.bytes", 1000000 + MessageSet.LogOverhead, (0, Int.MaxValue))
@@ -92,7 +100,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /*********** Socket Server Configuration ***********/
 
   /* the port to listen and accept connections on */
-  val port: Int = props.getInt("port", 6667)
+  val port: Int = props.getInt("port", 9092)
 
   /* hostname of broker. If this is set, it will only bind to this address. If this is not set,
    * it will bind to all interfaces */
@@ -117,10 +125,10 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /* the maximum number of bytes in a socket request */
   val socketRequestMaxBytes: Int = props.getIntInRange("socket.request.max.bytes", 100*1024*1024, (1, Int.MaxValue))
-  
+
   /* the maximum number of connections we allow from each ip address */
   val maxConnectionsPerIp: Int = props.getIntInRange("max.connections.per.ip", Int.MaxValue, (1, Int.MaxValue))
-  
+
   /* per-ip or hostname overrides to the default maximum number of connections */
   val maxConnectionsPerIpOverrides = props.getMap("max.connections.per.ip.overrides").map(entry => (entry._1, entry._2.toInt))
 
@@ -304,7 +312,11 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   val offsetsLoadBufferSize = props.getIntInRange("offsets.load.buffer.size",
     OffsetManagerConfig.DefaultLoadBufferSize, (1, Integer.MAX_VALUE))
 
-  /** The replication factor for the offset commit topic (set higher to ensure availability). */
+  /** The replication factor for the offsets topic (set higher to ensure availability). To
+    * ensure that the effective replication factor of the offsets topic is the configured value,
+    * the number of alive brokers has to be at least the replication factor at the time of the
+    * first request for the offsets topic. If not, either the offsets topic creation will fail or
+    * it will get a replication factor of min(alive brokers, configured replication factor) */
   val offsetsTopicReplicationFactor: Short = props.getShortInRange("offsets.topic.replication.factor",
     OffsetManagerConfig.DefaultOffsetsTopicReplicationFactor, (1, Short.MaxValue))
 
@@ -339,4 +351,12 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
 
+  /**
+   * Specify the final compression type for a given topic. This configuration accepts the standard compression codecs
+   * ('gzip', 'snappy', lz4). It additionally accepts 'uncompressed' which is equivalent to no compression; and
+   * 'producer' which means retain the original compression codec set by the producer."
+   */
+  val compressionType = props.getString("compression.type", "producer").toLowerCase()
+  require(BrokerCompressionCodec.isValid(compressionType), "compression.type : "+compressionType + " is not valid." +
+      " Valid options are "+BrokerCompressionCodec.brokerCompressionOptions.mkString(","))
 }

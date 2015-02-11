@@ -16,11 +16,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.MockClient;
-import org.apache.kafka.clients.producer.internals.Metadata;
 import org.apache.kafka.clients.producer.internals.RecordAccumulator;
 import org.apache.kafka.clients.producer.internals.Sender;
 import org.apache.kafka.common.Cluster;
@@ -50,7 +52,8 @@ public class SenderTest {
     private Metadata metadata = new Metadata(0, Long.MAX_VALUE);
     private Cluster cluster = TestUtils.singletonCluster("test", 1);
     private Metrics metrics = new Metrics(time);
-    private RecordAccumulator accumulator = new RecordAccumulator(batchSize, 1024 * 1024, 0L, 0L, false, metrics, time);
+    Map<String, String> metricTags = new LinkedHashMap<String, String>();
+    private RecordAccumulator accumulator = new RecordAccumulator(batchSize, 1024 * 1024, 0L, 0L, false, metrics, time, metricTags);
     private Sender sender = new Sender(client,
                                        metadata,
                                        this.accumulator,
@@ -59,7 +62,8 @@ public class SenderTest {
                                        MAX_RETRIES,
                                        REQUEST_TIMEOUT_MS,
                                        metrics,
-                                       time);
+                                       time,
+                                       "clientId");
 
     @Before
     public void setup() {
@@ -68,14 +72,14 @@ public class SenderTest {
 
     @Test
     public void testSimple() throws Exception {
-        int offset = 0;
+        long offset = 0;
         Future<RecordMetadata> future = accumulator.append(tp, "key".getBytes(), "value".getBytes(), CompressionType.NONE, null).future;
         sender.run(time.milliseconds()); // connect
         sender.run(time.milliseconds()); // send produce request
         assertEquals("We should have a single produce request in flight.", 1, client.inFlightRequestCount());
         client.respond(produceResponse(tp.topic(), tp.partition(), offset, Errors.NONE.code()));
         sender.run(time.milliseconds());
-        assertEquals("All requests completed.", offset, client.inFlightRequestCount());
+        assertEquals("All requests completed.", offset, (long) client.inFlightRequestCount());
         sender.run(time.milliseconds());
         assertTrue("Request should be completed", future.isDone());
         assertEquals(offset, future.get().offset());
@@ -93,7 +97,8 @@ public class SenderTest {
                                    maxRetries,
                                    REQUEST_TIMEOUT_MS,
                                    new Metrics(),
-                                   time);
+                                   time,
+                                   "clientId");
         // do a successful retry
         Future<RecordMetadata> future = accumulator.append(tp, "key".getBytes(), "value".getBytes(), CompressionType.NONE, null).future;
         sender.run(time.milliseconds()); // connect
@@ -105,7 +110,7 @@ public class SenderTest {
         sender.run(time.milliseconds()); // reconnect
         sender.run(time.milliseconds()); // resend
         assertEquals(1, client.inFlightRequestCount());
-        int offset = 0;
+        long offset = 0;
         client.respond(produceResponse(tp.topic(), tp.partition(), offset, Errors.NONE.code()));
         sender.run(time.milliseconds());
         assertTrue("Request should have retried and completed", future.isDone());
@@ -142,8 +147,8 @@ public class SenderTest {
         partResp.set("partition", part);
         partResp.set("error_code", (short) error);
         partResp.set("base_offset", offset);
-        response.set("partition_responses", new Object[] { partResp });
-        struct.set("responses", new Object[] { response });
+        response.set("partition_responses", new Object[] {partResp});
+        struct.set("responses", new Object[] {response});
         return struct;
     }
 

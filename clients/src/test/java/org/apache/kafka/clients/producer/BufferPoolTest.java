@@ -24,7 +24,9 @@ import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -33,15 +35,17 @@ import static org.junit.Assert.*;
 public class BufferPoolTest {
     private MockTime time = new MockTime();
     private Metrics metrics = new Metrics(time);
+    String metricGroup = "TestMetrics";
+    Map<String, String> metricTags = new LinkedHashMap<String, String>();
 
     /**
      * Test the simple non-blocking allocation paths
      */
     @Test
     public void testSimple() throws Exception {
-        int totalMemory = 64 * 1024;
+        long totalMemory = 64 * 1024;
         int size = 1024;
-        BufferPool pool = new BufferPool(totalMemory, size, false, metrics, time);
+        BufferPool pool = new BufferPool(totalMemory, size, false, metrics, time, metricGroup, metricTags);
         ByteBuffer buffer = pool.allocate(size);
         assertEquals("Buffer size should equal requested size.", size, buffer.limit());
         assertEquals("Unallocated memory should have shrunk", totalMemory - size, pool.unallocatedMemory());
@@ -68,7 +72,7 @@ public class BufferPoolTest {
      */
     @Test(expected = IllegalArgumentException.class)
     public void testCantAllocateMoreMemoryThanWeHave() throws Exception {
-        BufferPool pool = new BufferPool(1024, 512, true, metrics, time);
+        BufferPool pool = new BufferPool(1024, 512, true, metrics, time, metricGroup, metricTags);
         ByteBuffer buffer = pool.allocate(1024);
         assertEquals(1024, buffer.limit());
         pool.deallocate(buffer);
@@ -77,7 +81,7 @@ public class BufferPoolTest {
 
     @Test
     public void testNonblockingMode() throws Exception {
-        BufferPool pool = new BufferPool(2, 1, false, metrics, time);
+        BufferPool pool = new BufferPool(2, 1, false, metrics, time, metricGroup, metricTags);
         pool.allocate(1);
         try {
             pool.allocate(2);
@@ -92,18 +96,18 @@ public class BufferPoolTest {
      */
     @Test
     public void testDelayedAllocation() throws Exception {
-        BufferPool pool = new BufferPool(5 * 1024, 1024, true, metrics, time);
+        BufferPool pool = new BufferPool(5 * 1024, 1024, true, metrics, time, metricGroup, metricTags);
         ByteBuffer buffer = pool.allocate(1024);
         CountDownLatch doDealloc = asyncDeallocate(pool, buffer);
         CountDownLatch allocation = asyncAllocate(pool, 5 * 1024);
-        assertEquals("Allocation shouldn't have happened yet, waiting on memory.", 1, allocation.getCount());
+        assertEquals("Allocation shouldn't have happened yet, waiting on memory.", 1L, allocation.getCount());
         doDealloc.countDown(); // return the memory
         allocation.await();
     }
 
     private CountDownLatch asyncDeallocate(final BufferPool pool, final ByteBuffer buffer) {
         final CountDownLatch latch = new CountDownLatch(1);
-        new Thread() {
+        Thread thread = new Thread() {
             public void run() {
                 try {
                     latch.await();
@@ -112,13 +116,14 @@ public class BufferPoolTest {
                 }
                 pool.deallocate(buffer);
             }
-        }.start();
+        };
+        thread.start();
         return latch;
     }
 
     private CountDownLatch asyncAllocate(final BufferPool pool, final int size) {
         final CountDownLatch completed = new CountDownLatch(1);
-        new Thread() {
+        Thread thread = new Thread() {
             public void run() {
                 try {
                     pool.allocate(size);
@@ -128,7 +133,8 @@ public class BufferPoolTest {
                     completed.countDown();
                 }
             }
-        }.start();
+        };
+        thread.start();
         return completed;
     }
 
@@ -141,7 +147,7 @@ public class BufferPoolTest {
         final int iterations = 50000;
         final int poolableSize = 1024;
         final int totalMemory = numThreads / 2 * poolableSize;
-        final BufferPool pool = new BufferPool(totalMemory, poolableSize, true, metrics, time);
+        final BufferPool pool = new BufferPool(totalMemory, poolableSize, true, metrics, time, metricGroup, metricTags);
         List<StressTestThread> threads = new ArrayList<StressTestThread>();
         for (int i = 0; i < numThreads; i++)
             threads.add(new StressTestThread(pool, iterations));
@@ -168,12 +174,12 @@ public class BufferPoolTest {
             try {
                 for (int i = 0; i < iterations; i++) {
                     int size;
-                    if (TestUtils.random.nextBoolean())
+                    if (TestUtils.RANDOM.nextBoolean())
                         // allocate poolable size
                         size = pool.poolableSize();
                     else
                         // allocate a random size
-                        size = TestUtils.random.nextInt((int) pool.totalMemory());
+                        size = TestUtils.RANDOM.nextInt((int) pool.totalMemory());
                     ByteBuffer buffer = pool.allocate(size);
                     pool.deallocate(buffer);
                 }

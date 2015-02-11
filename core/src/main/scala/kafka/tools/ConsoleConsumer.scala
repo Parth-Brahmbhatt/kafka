@@ -113,8 +113,6 @@ object ConsoleConsumer extends Logging {
       KafkaMetricsReporter.startReporters(verifiableProps)
     }
 
-
-
     val consumerProps = if (options.has(consumerConfigOpt))
       Utils.loadProps(options.valueOf(consumerConfigOpt))
     else
@@ -126,10 +124,6 @@ object ConsoleConsumer extends Logging {
     }
     consumerProps.put("auto.offset.reset", if(options.has(resetBeginningOpt)) "smallest" else "largest")
     consumerProps.put("zookeeper.connect", options.valueOf(zkConnectOpt))
-    if(!consumerProps.containsKey("dual.commit.enabled"))
-      consumerProps.put("dual.commit.enabled","false")
-    if(!consumerProps.containsKey("offsets.storage"))
-      consumerProps.put("offsets.storage","zookeeper")
 
     if (!options.has(deleteConsumerOffsetsOpt) && options.has(resetBeginningOpt) &&
        checkZkPathExists(options.valueOf(zkConnectOpt),"/consumers/" + consumerProps.getProperty("group.id")+ "/offsets")) {

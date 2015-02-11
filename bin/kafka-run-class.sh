@@ -112,7 +112,7 @@ fi
 
 # JVM performance options
 if [ -z "$KAFKA_JVM_PERFORMANCE_OPTS" ]; then
-  KAFKA_JVM_PERFORMANCE_OPTS="-server -XX:+UseCompressedOops -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:+CMSScavengeBeforeRemark -XX:+DisableExplicitGC -Djava.awt.headless=true"
+  KAFKA_JVM_PERFORMANCE_OPTS="-server -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:+CMSScavengeBeforeRemark -XX:+DisableExplicitGC -Djava.awt.headless=true"
 fi
 
 
@@ -125,7 +125,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -loggc)
-      if [ -z "$KAFKA_GC_LOG_OPTS"] ; then
+      if [ -z "$KAFKA_GC_LOG_OPTS" ]; then
         GC_LOG_ENABLED="true"
       fi
       shift
