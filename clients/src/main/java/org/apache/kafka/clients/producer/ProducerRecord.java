@@ -94,6 +94,13 @@ public final class ProducerRecord<K, V> {
     }
 
     @Override
+    public String toString() {
+        String key = this.key == null ? "null" : this.key.toString();
+        String value = this.value == null ? "null" : this.value.toString();
+        return "ProducerRecord(topic=" + topic + ", partition=" + partition + ", key=" + key + ", value=" + value;
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof ProducerRecord)) return false;
