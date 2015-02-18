@@ -45,6 +45,7 @@ import kafka.log._
 import junit.framework.AssertionFailedError
 import junit.framework.Assert._
 import org.apache.kafka.clients.producer.KafkaProducer
+import collection.Iterable
 
 import scala.collection.Map
 
@@ -94,7 +95,7 @@ object TestUtils extends Logging {
         Utils.rm(f)
       }
     })
-    
+
     f
   }
 
@@ -139,9 +140,10 @@ object TestUtils extends Logging {
    * Create a test config for the given node id
    */
   def createBrokerConfigs(numConfigs: Int,
-    enableControlledShutdown: Boolean = true): List[Properties] = {
+    enableControlledShutdown: Boolean = true,
+    enableDeleteTopic: Boolean = false): List[Properties] = {
     for((port, node) <- choosePorts(numConfigs).zipWithIndex)
-    yield createBrokerConfig(node, port, enableControlledShutdown)
+    yield createBrokerConfig(node, port, enableControlledShutdown, enableDeleteTopic)
   }
 
   def getBrokerListStrFromConfigs(configs: Seq[KafkaConfig]): String = {
@@ -152,15 +154,17 @@ object TestUtils extends Logging {
    * Create a test config for the given node id
    */
   def createBrokerConfig(nodeId: Int, port: Int = choosePort(),
-    enableControlledShutdown: Boolean = true): Properties = {
+    enableControlledShutdown: Boolean = true,
+    enableDeleteTopic: Boolean = false): Properties = {
     val props = new Properties
-    props.put("broker.id", nodeId.toString)
+    if (nodeId >= 0) props.put("broker.id", nodeId.toString)
     props.put("host.name", "localhost")
     props.put("port", port.toString)
     props.put("log.dir", TestUtils.tempDir().getAbsolutePath)
     props.put("zookeeper.connect", TestZKUtils.zookeeperConnect)
     props.put("replica.socket.timeout.ms", "1500")
     props.put("controlled.shutdown.enable", enableControlledShutdown.toString)
+    props.put("delete.topic.enable", enableDeleteTopic.toString)
     props
   }
 
@@ -395,6 +399,8 @@ object TestUtils extends Logging {
     producerProps.put(ProducerConfig.RETRIES_CONFIG, retries.toString)
     producerProps.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "100")
     producerProps.put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, "200")
+    producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
+    producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     return new KafkaProducer[Array[Byte],Array[Byte]](producerProps)
   }
 
@@ -698,28 +704,30 @@ object TestUtils extends Logging {
     ZkUtils.pathExists(zkClient, ZkUtils.ReassignPartitionsPath)
   }
 
+  def verifyNonDaemonThreadsStatus() {
+    assertEquals(0, Thread.getAllStackTraces.keySet().toArray
+      .map(_.asInstanceOf[Thread])
+      .count(t => !t.isDaemon && t.isAlive && t.getClass.getCanonicalName.toLowerCase.startsWith("kafka")))
+  }
 
   /**
    * Create new LogManager instance with default configuration for testing
    */
-  def createLogManager(
-    logDirs: Array[File] = Array.empty[File],
-    defaultConfig: LogConfig = LogConfig(),
-    cleanerConfig: CleanerConfig = CleanerConfig(enableCleaner = false),
-    time: MockTime = new MockTime()) =
-  {
-    new LogManager(
-      logDirs = logDirs,
-      topicConfigs = Map(),
-      defaultConfig = defaultConfig,
-      cleanerConfig = cleanerConfig,
-      ioThreads = 4,
-      flushCheckMs = 1000L,
-      flushCheckpointMs = 10000L,
-      retentionCheckMs = 1000L,
-      scheduler = time.scheduler,
-      time = time,
-      brokerState = new BrokerState())
+  def createLogManager(logDirs: Array[File] = Array.empty[File],
+                       defaultConfig: LogConfig = LogConfig(),
+                       cleanerConfig: CleanerConfig = CleanerConfig(enableCleaner = false),
+                       time: MockTime = new MockTime()): LogManager = {
+    new LogManager(logDirs = logDirs,
+                   topicConfigs = Map(),
+                   defaultConfig = defaultConfig,
+                   cleanerConfig = cleanerConfig,
+                   ioThreads = 4,
+                   flushCheckMs = 1000L,
+                   flushCheckpointMs = 10000L,
+                   retentionCheckMs = 1000L,
+                   scheduler = time.scheduler,
+                   time = time,
+                   brokerState = new BrokerState())
   }
 
   def sendMessagesToPartition(configs: Seq[KafkaConfig],
@@ -788,6 +796,30 @@ object TestUtils extends Logging {
     }
     messages.reverse
   }
+
+  def verifyTopicDeletion(zkClient: ZkClient, topic: String, numPartitions: Int, servers: Seq[KafkaServer]) {
+    val topicAndPartitions = (0 until numPartitions).map(TopicAndPartition(topic, _))
+    // wait until admin path for delete topic is deleted, signaling completion of topic deletion
+    TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getDeleteTopicPath(topic)),
+      "Admin path /admin/delete_topic/test path not deleted even after a replica is restarted")
+    TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getTopicPath(topic)),
+      "Topic path /brokers/topics/test not deleted after /admin/delete_topic/test path is deleted")
+    // ensure that the topic-partition has been deleted from all brokers' replica managers
+    TestUtils.waitUntilTrue(() =>
+      servers.forall(server => topicAndPartitions.forall(tp => server.replicaManager.getPartition(tp.topic, tp.partition) == None)),
+      "Replica manager's should have deleted all of this topic's partitions")
+    // ensure that logs from all replicas are deleted if delete topic is marked successful in zookeeper
+    assertTrue("Replica logs not deleted after delete topic is complete",
+      servers.forall(server => topicAndPartitions.forall(tp => server.getLogManager().getLog(tp).isEmpty)))
+    // ensure that topic is removed from all cleaner offsets
+    TestUtils.waitUntilTrue(() => servers.forall(server => topicAndPartitions.forall { tp =>
+      val checkpoints = server.getLogManager().logDirs.map { logDir =>
+        new OffsetCheckpoint(new File(logDir, "cleaner-offset-checkpoint")).read()
+      }
+      checkpoints.forall(checkpointsPerLogDir => !checkpointsPerLogDir.contains(tp))
+    }), "Cleaner offset for deleted partition should have been removed")
+  }
+
 }
 
 object TestZKUtils {

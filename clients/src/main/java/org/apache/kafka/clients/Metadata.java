@@ -10,7 +10,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
-package org.apache.kafka.clients.producer.internals;
+package org.apache.kafka.clients;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * This class is shared by the client thread (for partitioning) and the background sender thread.
  * 
- * Metadata is maintained for only a subset of topics, which can be added to over time. When we request metdata for a
+ * Metadata is maintained for only a subset of topics, which can be added to over time. When we request metadata for a
  * topic we don't have any metadata for it will trigger a metadata update.
  */
 public final class Metadata {
@@ -78,9 +78,9 @@ public final class Metadata {
     }
 
     /**
-     * The next time to update the cluster info is the maximum of the time the current info will expire
-     * and the time the current info can be updated (i.e. backoff time has elapsed); If an update has
-     * been request then the expiry time is now
+     * The next time to update the cluster info is the maximum of the time the current info will expire and the time the
+     * current info can be updated (i.e. backoff time has elapsed); If an update has been request then the expiry time
+     * is now
      */
     public synchronized long timeToNextUpdate(long nowMs) {
         long timeToExpire = needUpdate ? 0 : Math.max(this.lastRefreshMs + this.metadataExpireMs - nowMs, 0);
@@ -99,12 +99,17 @@ public final class Metadata {
     /**
      * Wait for metadata update until the current version is larger than the last version we know of
      */
-    public synchronized void awaitUpdate(int lastVerison, long maxWaitMs) {
+    public synchronized void awaitUpdate(final int lastVersion, final long maxWaitMs) {
+        if (maxWaitMs < 0) {
+            throw new IllegalArgumentException("Max time to wait for metadata updates should not be < 0 milli seconds");
+        }
         long begin = System.currentTimeMillis();
         long remainingWaitMs = maxWaitMs;
-        while (this.version <= lastVerison) {
+        while (this.version <= lastVersion) {
             try {
-                wait(remainingWaitMs);
+                if (remainingWaitMs != 0) {
+                    wait(remainingWaitMs);
+                }
             } catch (InterruptedException e) { /* this is fine */
             }
             long elapsed = System.currentTimeMillis() - begin;
@@ -112,6 +117,15 @@ public final class Metadata {
                 throw new TimeoutException("Failed to update metadata after " + maxWaitMs + " ms.");
             remainingWaitMs = maxWaitMs - elapsed;
         }
+    }
+
+    /**
+     * Add one or more topics to maintain metadata for
+     */
+    public synchronized void addTopics(String... topics) {
+        for (String topic : topics)
+            this.topics.add(topic);
+        requestUpdate();
     }
 
     /**
@@ -131,6 +145,13 @@ public final class Metadata {
         this.cluster = cluster;
         notifyAll();
         log.debug("Updated cluster metadata version {} to {}", this.version, this.cluster);
+    }
+    
+    /**
+     * @return The current metadata version
+     */
+    public synchronized int version() {
+        return this.version;
     }
 
     /**

@@ -19,9 +19,11 @@ package kafka.log
 
 import java.util.Properties
 import org.apache.kafka.common.utils.Utils
-
 import scala.collection._
 import org.apache.kafka.common.config.ConfigDef
+import kafka.common._
+import scala.collection.JavaConversions._
+import kafka.message.BrokerCompressionCodec
 
 object Defaults {
   val SegmentSize = 1024 * 1024
@@ -40,6 +42,7 @@ object Defaults {
   val Compact = false
   val UncleanLeaderElectionEnable = true
   val MinInSyncReplicas = 1
+  val CompressionType = "producer"
 }
 
 /**
@@ -59,6 +62,7 @@ object Defaults {
  * @param compact Should old segments in this log be deleted or deduplicated?
  * @param uncleanLeaderElectionEnable Indicates whether unclean leader election is enabled
  * @param minInSyncReplicas If number of insync replicas drops below this number, we stop accepting writes with -1 (or all) required acks
+ * @param compressionType compressionType for a given topic
  *
  */
 case class LogConfig(val segmentSize: Int = Defaults.SegmentSize,
@@ -76,7 +80,8 @@ case class LogConfig(val segmentSize: Int = Defaults.SegmentSize,
                      val minCleanableRatio: Double = Defaults.MinCleanableDirtyRatio,
                      val compact: Boolean = Defaults.Compact,
                      val uncleanLeaderElectionEnable: Boolean = Defaults.UncleanLeaderElectionEnable,
-                     val minInSyncReplicas: Int = Defaults.MinInSyncReplicas) {
+                     val minInSyncReplicas: Int = Defaults.MinInSyncReplicas,
+                     val compressionType: String = Defaults.CompressionType) {
 
   def toProps: Properties = {
     val props = new Properties()
@@ -97,6 +102,7 @@ case class LogConfig(val segmentSize: Int = Defaults.SegmentSize,
     props.put(CleanupPolicyProp, if(compact) "compact" else "delete")
     props.put(UncleanLeaderElectionEnableProp, uncleanLeaderElectionEnable.toString)
     props.put(MinInSyncReplicasProp, minInSyncReplicas.toString)
+    props.put(CompressionTypeProp, compressionType)
     props
   }
 
@@ -125,6 +131,7 @@ object LogConfig {
   val CleanupPolicyProp = "cleanup.policy"
   val UncleanLeaderElectionEnableProp = "unclean.leader.election.enable"
   val MinInSyncReplicasProp = "min.insync.replicas"
+  val CompressionTypeProp = "compression.type"
 
   val SegmentSizeDoc = "The hard maximum for the size of a segment file in the log"
   val SegmentMsDoc = "The soft maximum on the amount of time before a new log segment is rolled"
@@ -145,6 +152,9 @@ object LogConfig {
   val UncleanLeaderElectionEnableDoc = "Indicates whether unclean leader election is enabled"
   val MinInSyncReplicasDoc = "If number of insync replicas drops below this number, we stop accepting writes with" +
     " -1 (or all) required acks"
+  val CompressionTypeDoc = "Specify the final compression type for a given topic. This configuration accepts the " +
+    "standard compression codecs ('gzip', 'snappy', lz4). It additionally accepts 'uncompressed' which is equivalent to " +
+    "no compression; and 'producer' which means retain the original compression codec set by the producer."
 
   private val configDef = {
     import ConfigDef.Range._
@@ -169,17 +179,19 @@ object LogConfig {
       .define(FileDeleteDelayMsProp, LONG, Defaults.FileDeleteDelayMs, atLeast(0), MEDIUM, FileDeleteDelayMsDoc)
       .define(MinCleanableDirtyRatioProp, DOUBLE, Defaults.MinCleanableDirtyRatio, between(0, 1), MEDIUM,
         MinCleanableRatioDoc)
-      .define(CleanupPolicyProp, STRING, if (Defaults.Compact) Compact else Delete, in(asList(Compact, Delete)), MEDIUM,
+      .define(CleanupPolicyProp, STRING, if (Defaults.Compact) Compact else Delete, in(Compact, Delete), MEDIUM,
         CompactDoc)
       .define(UncleanLeaderElectionEnableProp, BOOLEAN, Defaults.UncleanLeaderElectionEnable,
         MEDIUM, UncleanLeaderElectionEnableDoc)
       .define(MinInSyncReplicasProp, INT, Defaults.MinInSyncReplicas, atLeast(1), MEDIUM, MinInSyncReplicasDoc)
+      .define(CompressionTypeProp, STRING, Defaults.CompressionType, in(BrokerCompressionCodec.brokerCompressionOptions:_*), MEDIUM, CompressionTypeDoc)
   }
 
   def configNames() = {
     import JavaConversions._
     configDef.names().toList.sorted
   }
+
 
   /**
    * Parse the given properties instance into a LogConfig object
@@ -202,7 +214,8 @@ object LogConfig {
                   minCleanableRatio = parsed.get(MinCleanableDirtyRatioProp).asInstanceOf[Double],
                   compact = parsed.get(CleanupPolicyProp).asInstanceOf[String].toLowerCase != Delete,
                   uncleanLeaderElectionEnable = parsed.get(UncleanLeaderElectionEnableProp).asInstanceOf[Boolean],
-                  minInSyncReplicas = parsed.get(MinInSyncReplicasProp).asInstanceOf[Int])
+                  minInSyncReplicas = parsed.get(MinInSyncReplicasProp).asInstanceOf[Int],
+                  compressionType = parsed.get(CompressionTypeProp).asInstanceOf[String].toLowerCase())
   }
 
   /**

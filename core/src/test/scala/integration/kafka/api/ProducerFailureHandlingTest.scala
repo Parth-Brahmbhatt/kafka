@@ -46,6 +46,16 @@ class ProducerFailureHandlingTest extends KafkaServerTestHarness {
       override val zkConnect = TestZKUtils.zookeeperConnect
       override val autoCreateTopicsEnable = false
       override val messageMaxBytes = serverMessageMaxBytes
+      // TODO: Currently, when there is no topic in a cluster, the controller doesn't send any UpdateMetadataRequest to
+      // the broker. As a result, the live broker list in metadataCache is empty. If the number of live brokers is 0, we
+      // try to create the offset topic with the default offsets.topic.replication.factor of 3. The creation will fail
+      // since there is not enough live brokers. This causes testCannotSendToInternalTopic() to fail. Temporarily fixing
+      // the issue by overriding offsets.topic.replication.factor to 1 for now. When we fix KAFKA-1867, we need to
+      // remove the following config override.
+      override val offsetsTopicReplicationFactor = 1.asInstanceOf[Short]
+      // Set a smaller value for the number of partitions for the offset commit topic (__consumer_offset topic)
+      // so that the creation of that topic/partition(s) and subsequent leader assignment doesn't take relatively long
+      override val offsetsTopicPartitions = 1
     }
 
 
@@ -262,7 +272,7 @@ class ProducerFailureHandlingTest extends KafkaServerTestHarness {
       for (server <- servers) {
         server.shutdown()
         server.awaitShutdown()
-        server.startup
+        server.startup()
 
         Thread.sleep(2000)
       }
@@ -302,7 +312,7 @@ class ProducerFailureHandlingTest extends KafkaServerTestHarness {
     val thrown = intercept[ExecutionException] {
       producer2.send(new ProducerRecord[Array[Byte],Array[Byte]](Topic.InternalTopics.head, "test".getBytes, "test".getBytes)).get
     }
-    assertTrue(thrown.getCause.isInstanceOf[InvalidTopicException])
+    assertTrue("Unexpected exception while sending to an invalid topic " + thrown.getCause, thrown.getCause.isInstanceOf[InvalidTopicException])
   }
 
   @Test

@@ -34,6 +34,11 @@ Follow instuctions in http://kafka.apache.org/documentation.html#quickstart
 ### Running a particular unit test ###
     ./gradlew -Dtest.single=RequestResponseSerializationTest core:test
 
+### Running a particular test method within a unit test ###
+    ./gradlew core:test --tests kafka.api.test.ProducerFailureHandlingTest.testCannotSendToInternalTopic
+    ./gradlew clients:test --tests org.apache.kafka.clients.producer.MetadataTest.testMetadataUpdateWaitTime
+    
+
 ### Running a particular unit test with log4j output ###
     change the log4j setting in either clients/src/test/resources/log4j.properties or core/src/test/resources/log4j.properties
     ./gradlew -i -Dtest.single=RequestResponseSerializationTest core:test
@@ -49,7 +54,7 @@ The release file can be found inside ./core/build/distributions/.
 ### Cleaning the build ###
     ./gradlew clean
 
-### Running a task on a particular version of Scala (either 2.9.1, 2.9.2, 2.10.1 or 2.11) ###
+### Running a task on a particular version of Scala (either 2.9.1, 2.9.2, 2.10.4 or 2.11.5) ###
 #### (If building a jar with a version other than 2.10, need to set SCALA_BINARY_VERSION variable or change it in bin/kafka-run-class.sh to run quick start.) ####
     ./gradlew -PscalaVersion=2.9.1 jar
     ./gradlew -PscalaVersion=2.9.1 test
@@ -93,6 +98,9 @@ Please note for this to work you should create/update `~/.gradle/gradle.properti
 
 ### Determining how transitive dependencies are added ###
     ./gradlew core:dependencies --configuration runtime
+	
+### Running checkstyle on the java code ###
+    ./gradlew checkstyleMain checkstyleTest
 
 ### Running in Vagrant ###
 

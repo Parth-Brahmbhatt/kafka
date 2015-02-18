@@ -17,13 +17,18 @@
 
 package kafka.server
 
+import org.apache.kafka.common.requests.JoinGroupResponse
+import org.apache.kafka.common.requests.HeartbeatResponse
+import org.apache.kafka.common.TopicPartition
+
 import kafka.api._
+import kafka.admin.AdminUtils
 import kafka.common._
+import kafka.controller.KafkaController
+import kafka.coordinator.ConsumerCoordinator
 import kafka.log._
 import kafka.network._
-import kafka.admin.AdminUtils
 import kafka.network.RequestChannel.Response
-import kafka.controller.KafkaController
 import kafka.utils.{SystemTime, Logging}
 
 import scala.collection._
@@ -36,13 +41,14 @@ import org.I0Itec.zkclient.ZkClient
 class KafkaApis(val requestChannel: RequestChannel,
                 val replicaManager: ReplicaManager,
                 val offsetManager: OffsetManager,
+                val coordinator: ConsumerCoordinator,
+                val controller: KafkaController,
                 val zkClient: ZkClient,
                 val brokerId: Int,
-                val config: KafkaConfig,
-                val controller: KafkaController) extends Logging {
+                val config: KafkaConfig) extends Logging {
 
   this.logIdent = "[KafkaApi-%d] ".format(brokerId)
-  val metadataCache = new MetadataCache
+  val metadataCache = new MetadataCache(brokerId)
 
   /**
    * Top-level method that handles all requests and multiplexes to the right api
@@ -62,6 +68,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         case RequestKeys.OffsetCommitKey => handleOffsetCommitRequest(request)
         case RequestKeys.OffsetFetchKey => handleOffsetFetchRequest(request)
         case RequestKeys.ConsumerMetadataKey => handleConsumerMetadataRequest(request)
+        case RequestKeys.JoinGroupKey => handleJoinGroupRequest(request)
+        case RequestKeys.HeartbeatKey => handleHeartbeatRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
       }
     } catch {
@@ -125,7 +133,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleOffsetCommitRequest(request: RequestChannel.Request) {
     val offsetCommitRequest = request.requestObj.asInstanceOf[OffsetCommitRequest]
 
-    // the callback for sending the response
+    // the callback for sending an offset commit response
     def sendResponseCallback(commitStatus: immutable.Map[TopicAndPartition, Short]) {
       commitStatus.foreach { case (topicAndPartition, errorCode) =>
         // we only print warnings for known errors here; only replica manager could see an unknown
@@ -157,7 +165,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleProducerRequest(request: RequestChannel.Request) {
     val produceRequest = request.requestObj.asInstanceOf[ProducerRequest]
 
-    // the callback for sending the response
+    // the callback for sending a produce response
     def sendResponseCallback(responseStatus: Map[TopicAndPartition, ProducerResponseStatus]) {
       var errorInResponse = false
       responseStatus.foreach { case (topicAndPartition, status) =>
@@ -177,7 +185,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         // the producer client will know that some error has happened and will refresh its metadata
         if (errorInResponse) {
           info("Close connection due to error handling produce request with correlation id %d from client id %s with ack=0"
-            .format(produceRequest.correlationId, produceRequest.clientId))
+                  .format(produceRequest.correlationId, produceRequest.clientId))
           requestChannel.closeConnection(request.processor, request)
         } else {
           requestChannel.noOperation(request.processor, request)
@@ -212,7 +220,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleFetchRequest(request: RequestChannel.Request) {
     val fetchRequest = request.requestObj.asInstanceOf[FetchRequest]
 
-    // the callback for sending the response
+    // the callback for sending a fetch response
     def sendResponseCallback(responsePartitionData: Map[TopicAndPartition, FetchResponsePartitionData]) {
       responsePartitionData.foreach { case (topicAndPartition, data) =>
         // we only print warnings for known errors here; if it is unknown, it will cause
@@ -351,10 +359,17 @@ class KafkaApis(val requestChannel: RequestChannel,
         if (topic == OffsetManager.OffsetsTopicName || config.autoCreateTopicsEnable) {
           try {
             if (topic == OffsetManager.OffsetsTopicName) {
-              AdminUtils.createTopic(zkClient, topic, config.offsetsTopicPartitions, config.offsetsTopicReplicationFactor,
+              val aliveBrokers = metadataCache.getAliveBrokers
+              val offsetsTopicReplicationFactor =
+                if (aliveBrokers.length > 0)
+                  Math.min(config.offsetsTopicReplicationFactor, aliveBrokers.length)
+                else
+                  config.offsetsTopicReplicationFactor
+              AdminUtils.createTopic(zkClient, topic, config.offsetsTopicPartitions,
+                                     offsetsTopicReplicationFactor,
                                      offsetManager.offsetsTopicConfig)
               info("Auto creation of topic %s with %d partitions and replication factor %d is successful!"
-                .format(topic, config.offsetsTopicPartitions, config.offsetsTopicReplicationFactor))
+                .format(topic, config.offsetsTopicPartitions, offsetsTopicReplicationFactor))
             }
             else {
               AdminUtils.createTopic(zkClient, topic, config.numPartitions, config.defaultReplicationFactor)
@@ -396,7 +411,11 @@ class KafkaApis(val requestChannel: RequestChannel,
       metadataCache.getPartitionInfo(topicAndPartition.topic, topicAndPartition.partition).isEmpty
     )
     val unknownStatus = unknownTopicPartitions.map(topicAndPartition => (topicAndPartition, OffsetMetadataAndError.UnknownTopicOrPartition)).toMap
-    val knownStatus = offsetManager.getOffsets(offsetFetchRequest.groupId, knownTopicPartitions).toMap
+    val knownStatus =
+      if (knownTopicPartitions.size > 0)
+        offsetManager.getOffsets(offsetFetchRequest.groupId, knownTopicPartitions).toMap
+      else
+        Map.empty[TopicAndPartition, OffsetMetadataAndError]
     val status = unknownStatus ++ knownStatus
 
     val response = OffsetFetchResponse(status, offsetFetchRequest.correlationId)
@@ -431,6 +450,46 @@ class KafkaApis(val requestChannel: RequestChannel,
     requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
   }
 
+  def handleJoinGroupRequest(request: RequestChannel.Request) {
+    import JavaConversions._
+
+    val joinGroupRequest = request.requestObj.asInstanceOf[JoinGroupRequestAndHeader]
+    
+    // the callback for sending a join-group response
+    def sendResponseCallback(partitions: List[TopicAndPartition], generationId: Int, errorCode: Short) {
+      val partitionList = partitions.map(tp => new TopicPartition(tp.topic, tp.partition)).toBuffer
+      val responseBody = new JoinGroupResponse(errorCode, generationId, joinGroupRequest.body.consumerId, partitionList)
+      val response = new JoinGroupResponseAndHeader(joinGroupRequest.correlationId, responseBody)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+    }
+
+    // let the coordinator to handle join-group
+    coordinator.consumerJoinGroup(
+      joinGroupRequest.body.groupId(),
+      joinGroupRequest.body.consumerId(),
+      joinGroupRequest.body.topics().toList,
+      joinGroupRequest.body.sessionTimeout(),
+      joinGroupRequest.body.strategy(),
+      sendResponseCallback)
+  }
+  
+  def handleHeartbeatRequest(request: RequestChannel.Request) {
+    val heartbeatRequest = request.requestObj.asInstanceOf[HeartbeatRequestAndHeader]
+
+    // the callback for sending a heartbeat response
+    def sendResponseCallback(errorCode: Short) {
+      val response = new HeartbeatResponseAndHeader(heartbeatRequest.correlationId, new HeartbeatResponse(errorCode))
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+    }
+
+    // let the coordinator to handle heartbeat
+    coordinator.consumerHeartbeat(
+      heartbeatRequest.body.groupId(),
+      heartbeatRequest.body.consumerId(),
+      heartbeatRequest.body.groupGenerationId(),
+      sendResponseCallback)
+  }
+  
   def close() {
     // TODO currently closing the API is an no-op since the API no longer maintain any modules
     // maybe removing the closing call in the end when KafkaAPI becomes a pure stateless layer

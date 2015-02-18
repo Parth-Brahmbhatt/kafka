@@ -302,25 +302,28 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
   def commitOffsets { commitOffsets(true) }
 
   def commitOffsets(isAutoCommit: Boolean) {
-    commitOffsets(isAutoCommit, null)
+
+    val offsetsToCommit =
+      immutable.Map(topicRegistry.flatMap { case (topic, partitionTopicInfos) =>
+        partitionTopicInfos.map { case (partition, info) =>
+          TopicAndPartition(info.topic, info.partitionId) -> OffsetAndMetadata(info.getConsumeOffset())
+        }
+      }.toSeq: _*)
+
+    commitOffsets(offsetsToCommit, isAutoCommit)
+
   }
 
-  def commitOffsets(isAutoCommit: Boolean,
-                    topicPartitionOffsets: immutable.Map[TopicAndPartition, OffsetAndMetadata]) {
-    var retriesRemaining = 1 + (if (isAutoCommit) config.offsetsCommitMaxRetries else 0) // no retries for commits from auto-commit
+  def commitOffsets(offsetsToCommit: immutable.Map[TopicAndPartition, OffsetAndMetadata], isAutoCommit: Boolean) {
+    trace("OffsetMap: %s".format(offsetsToCommit))
+    var retriesRemaining = 1 + (if (isAutoCommit) 0 else config.offsetsCommitMaxRetries) // no retries for commits from auto-commit
     var done = false
-
     while (!done) {
-      val committed = offsetsChannelLock synchronized { // committed when we receive either no error codes or only MetadataTooLarge errors
-        val offsetsToCommit = if (topicPartitionOffsets == null) {immutable.Map(topicRegistry.flatMap { case (topic, partitionTopicInfos) =>
-          partitionTopicInfos.map { case (partition, info) =>
-            TopicAndPartition(info.topic, info.partitionId) -> OffsetAndMetadata(info.getConsumeOffset())
-          }
-        }.toSeq:_*)} else topicPartitionOffsets
-
+      val committed = offsetsChannelLock synchronized {
+        // committed when we receive either no error codes or only MetadataTooLarge errors
         if (offsetsToCommit.size > 0) {
           if (config.offsetsStorage == "zookeeper") {
-            offsetsToCommit.foreach { case(topicAndPartition, offsetAndMetadata) =>
+            offsetsToCommit.foreach { case (topicAndPartition, offsetAndMetadata) =>
               commitOffsetToZooKeeper(topicAndPartition, offsetAndMetadata.offset)
             }
             true
@@ -334,25 +337,25 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
               trace("Offset commit response: %s.".format(offsetCommitResponse))
 
               val (commitFailed, retryableIfFailed, shouldRefreshCoordinator, errorCount) = {
-                offsetCommitResponse.commitStatus.foldLeft(false, false, false, 0) { case(folded, (topicPartition, errorCode)) =>
+                offsetCommitResponse.commitStatus.foldLeft(false, false, false, 0) { case (folded, (topicPartition, errorCode)) =>
 
                   if (errorCode == ErrorMapping.NoError && config.dualCommitEnabled) {
-                      val offset = offsetsToCommit(topicPartition).offset
-                      commitOffsetToZooKeeper(topicPartition, offset)
+                    val offset = offsetsToCommit(topicPartition).offset
+                    commitOffsetToZooKeeper(topicPartition, offset)
                   }
 
                   (folded._1 || // update commitFailed
-                     errorCode != ErrorMapping.NoError,
+                    errorCode != ErrorMapping.NoError,
 
-                  folded._2 || // update retryableIfFailed - (only metadata too large is not retryable)
-                    (errorCode != ErrorMapping.NoError && errorCode != ErrorMapping.OffsetMetadataTooLargeCode),
+                    folded._2 || // update retryableIfFailed - (only metadata too large is not retryable)
+                      (errorCode != ErrorMapping.NoError && errorCode != ErrorMapping.OffsetMetadataTooLargeCode),
 
-                  folded._3 || // update shouldRefreshCoordinator
-                    errorCode == ErrorMapping.NotCoordinatorForConsumerCode ||
-                    errorCode == ErrorMapping.ConsumerCoordinatorNotAvailableCode,
+                    folded._3 || // update shouldRefreshCoordinator
+                      errorCode == ErrorMapping.NotCoordinatorForConsumerCode ||
+                      errorCode == ErrorMapping.ConsumerCoordinatorNotAvailableCode,
 
-                  // update error count
-                  folded._4 + (if (errorCode != ErrorMapping.NoError) 1 else 0))
+                    // update error count
+                    folded._4 + (if (errorCode != ErrorMapping.NoError) 1 else 0))
                 }
               }
               debug(errorCount + " errors in offset commit response.")
@@ -381,11 +384,10 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
         }
       }
 
-      done = if (isShuttingDown.get() && isAutoCommit) { // should not retry indefinitely if shutting down
+      done = {
         retriesRemaining -= 1
         retriesRemaining == 0 || committed
-      } else
-        true
+      }
 
       if (!done) {
         debug("Retrying offset commit in %d ms".format(config.offsetsChannelBackoffMs))
@@ -611,36 +613,35 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
     def syncedRebalance() {
       rebalanceLock synchronized {
         rebalanceTimer.time {
-          if(isShuttingDown.get())  {
-            return
-          } else {
-            for (i <- 0 until config.rebalanceMaxRetries) {
-              info("begin rebalancing consumer " + consumerIdString + " try #" + i)
-              var done = false
-              var cluster: Cluster = null
-              try {
-                cluster = getCluster(zkClient)
-                done = rebalance(cluster)
-              } catch {
-                case e: Throwable =>
-                  /** occasionally, we may hit a ZK exception because the ZK state is changing while we are iterating.
-                    * For example, a ZK node can disappear between the time we get all children and the time we try to get
-                    * the value of a child. Just let this go since another rebalance will be triggered.
-                    **/
-                  info("exception during rebalance ", e)
-              }
-              info("end rebalancing consumer " + consumerIdString + " try #" + i)
-              if (done) {
-                return
-              } else {
-                /* Here the cache is at a risk of being stale. To take future rebalancing decisions correctly, we should
-                 * clear the cache */
-                info("Rebalancing attempt failed. Clearing the cache before the next rebalancing operation is triggered")
-              }
-              // stop all fetchers and clear all the queues to avoid data duplication
-              closeFetchersForQueues(cluster, kafkaMessageAndMetadataStreams, topicThreadIdAndQueues.map(q => q._2))
-              Thread.sleep(config.rebalanceBackoffMs)
+          for (i <- 0 until config.rebalanceMaxRetries) {
+            if(isShuttingDown.get())  {
+              return
             }
+            info("begin rebalancing consumer " + consumerIdString + " try #" + i)
+            var done = false
+            var cluster: Cluster = null
+            try {
+              cluster = getCluster(zkClient)
+              done = rebalance(cluster)
+            } catch {
+              case e: Throwable =>
+                /** occasionally, we may hit a ZK exception because the ZK state is changing while we are iterating.
+                  * For example, a ZK node can disappear between the time we get all children and the time we try to get
+                  * the value of a child. Just let this go since another rebalance will be triggered.
+                  **/
+                info("exception during rebalance ", e)
+            }
+            info("end rebalancing consumer " + consumerIdString + " try #" + i)
+            if (done) {
+              return
+            } else {
+              /* Here the cache is at a risk of being stale. To take future rebalancing decisions correctly, we should
+               * clear the cache */
+              info("Rebalancing attempt failed. Clearing the cache before the next rebalancing operation is triggered")
+            }
+            // stop all fetchers and clear all the queues to avoid data duplication
+            closeFetchersForQueues(cluster, kafkaMessageAndMetadataStreams, topicThreadIdAndQueues.map(q => q._2))
+            Thread.sleep(config.rebalanceBackoffMs)
           }
         }
       }

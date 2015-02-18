@@ -16,20 +16,15 @@
  */
 package kafka.admin
 
+import kafka.log.Log
 import org.scalatest.junit.JUnit3Suite
 import kafka.zk.ZooKeeperTestHarness
 import junit.framework.Assert._
 import kafka.utils.{ZkUtils, TestUtils}
 import kafka.server.{KafkaServer, KafkaConfig}
 import org.junit.Test
-import kafka.common._
-import kafka.producer.{ProducerConfig, Producer}
 import java.util.Properties
-import kafka.api._
-import kafka.consumer.SimpleConsumer
-import kafka.producer.KeyedMessage
 import kafka.common.TopicAndPartition
-import kafka.api.PartitionOffsetRequestInfo
 
 class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
 
@@ -40,7 +35,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val servers = createTestTopicAndCluster(topic)
     // start topic deletion
     AdminUtils.deleteTopic(zkClient, topic)
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     servers.foreach(_.shutdown())
   }
 
@@ -65,7 +60,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
       "Admin path /admin/delete_topic/test path deleted even when a follower replica is down")
     // restart follower replica
     follower.startup()
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     servers.foreach(_.shutdown())
   }
 
@@ -92,7 +87,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     controller.startup()
     follower.startup()
 
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     servers.foreach(_.shutdown())
   }
 
@@ -138,7 +133,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val assignedReplicas = ZkUtils.getReplicasForPartition(zkClient, topic, 0)
     assertEquals("Partition should not be reassigned to 0, 1, 2", oldAssignedReplicas, assignedReplicas)
     follower.startup()
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     allServers.foreach(_.shutdown())
   }
 
@@ -157,7 +152,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     AdminUtils.deleteTopic(zkClient, topic)
     follower.startup()
     // test if topic deletion is resumed
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     // verify that new partition doesn't exist on any broker either
     TestUtils.waitUntilTrue(() =>
       servers.foldLeft(true)((res, server) => res && server.getLogManager().getLog(newPartition).isEmpty),
@@ -175,7 +170,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     // add partitions to topic
     val newPartition = TopicAndPartition(topic, 1)
     AdminUtils.addPartitions(zkClient, topic, 2, "0:1:2,0:1:2")
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     // verify that new partition doesn't exist on any broker either
     assertTrue("Replica logs not deleted after delete topic is complete",
       servers.foldLeft(true)((res, server) => res && server.getLogManager().getLog(newPartition).isEmpty))
@@ -190,7 +185,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val servers = createTestTopicAndCluster(topic)
     // start topic deletion
     AdminUtils.deleteTopic(zkClient, topic)
-    verifyTopicDeletion(topic, servers)
+    TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     // re-create topic on same replicas
     AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment)
     // wait until leader is elected
@@ -210,7 +205,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     // start topic deletion
     AdminUtils.deleteTopic(zkClient, "test2")
     // verify delete topic path for test2 is removed from zookeeper
-    verifyTopicDeletion("test2", servers)
+    TestUtils.verifyTopicDeletion(zkClient, "test2", 1, servers)
     // verify that topic test is untouched
     TestUtils.waitUntilTrue(() => servers.foldLeft(true)((res, server) =>
       res && server.getLogManager().getLog(topicAndPartition).isDefined),
@@ -221,14 +216,50 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val leaderIdOpt = TestUtils.waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 1000)
     assertTrue("Leader should exist for topic test", leaderIdOpt.isDefined)
     servers.foreach(_.shutdown())
+  }
 
+  @Test
+  def testDeleteTopicWithCleaner() {
+    val topicName = "test"
+    val topicAndPartition = TopicAndPartition(topicName, 0)
+    val topic = topicAndPartition.topic
+
+    val brokerConfigs = TestUtils.createBrokerConfigs(3, false)
+    brokerConfigs(0).setProperty("delete.topic.enable", "true")
+    brokerConfigs(0).setProperty("log.cleaner.enable","true")
+    brokerConfigs(0).setProperty("log.cleanup.policy","compact")
+    brokerConfigs(0).setProperty("log.segment.bytes","100")
+    brokerConfigs(0).setProperty("log.segment.delete.delay.ms","1000")
+    val servers = createTestTopicAndCluster(topic,brokerConfigs)
+
+    // for simplicity, we are validating cleaner offsets on a single broker
+    val server = servers(0)
+    val log = server.logManager.getLog(topicAndPartition).get
+
+    // write to the topic to activate cleaner
+    writeDups(numKeys = 100, numDups = 3,log)
+
+    // wait for cleaner to clean
+   server.logManager.cleaner.awaitCleaned(topicName,0,0)
+
+    // delete topic
+    AdminUtils.deleteTopic(zkClient, "test")
+    TestUtils.verifyTopicDeletion(zkClient, "test", 1, servers)
+
+    servers.foreach(_.shutdown())
   }
 
   private def createTestTopicAndCluster(topic: String): Seq[KafkaServer] = {
+
+    val brokerConfigs = TestUtils.createBrokerConfigs(3, false)
+    brokerConfigs.foreach(p => p.setProperty("delete.topic.enable", "true")
+    )
+    createTestTopicAndCluster(topic,brokerConfigs)
+  }
+
+  private def createTestTopicAndCluster(topic: String, brokerConfigs: Seq[Properties]): Seq[KafkaServer] = {
     val expectedReplicaAssignment = Map(0 -> List(0, 1, 2))
     val topicAndPartition = TopicAndPartition(topic, 0)
-    val brokerConfigs = TestUtils.createBrokerConfigs(3, false)
-    brokerConfigs.foreach(p => p.setProperty("delete.topic.enable", "true"))
     // create brokers
     val servers = brokerConfigs.map(b => TestUtils.createServer(new KafkaConfig(b)))
     // create the topic
@@ -240,18 +271,13 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     servers
   }
 
-  private def verifyTopicDeletion(topic: String, servers: Seq[KafkaServer]) {
-    val topicAndPartition = TopicAndPartition(topic, 0)
-    // wait until admin path for delete topic is deleted, signaling completion of topic deletion
-    TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getDeleteTopicPath(topic)),
-      "Admin path /admin/delete_topic/test path not deleted even after a replica is restarted")
-    TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getTopicPath(topic)),
-      "Topic path /brokers/topics/test not deleted after /admin/delete_topic/test path is deleted")
-    // ensure that the topic-partition has been deleted from all brokers' replica managers
-    TestUtils.waitUntilTrue(() => servers.foldLeft(true)((res, server) => res && server.replicaManager.getPartition(topic, 0) == None),
-      "Replica manager's should have deleted all of this topic's partitions")
-    // ensure that logs from all replicas are deleted if delete topic is marked successful in zookeeper
-    assertTrue("Replica logs not deleted after delete topic is complete",
-      servers.foldLeft(true)((res, server) => res && server.getLogManager().getLog(topicAndPartition).isEmpty))
+  private def writeDups(numKeys: Int, numDups: Int, log: Log): Seq[(Int, Int)] = {
+    var counter = 0
+    for(dup <- 0 until numDups; key <- 0 until numKeys) yield {
+      val count = counter
+      log.append(TestUtils.singleMessageSet(payload = counter.toString.getBytes, key = key.toString.getBytes), assignOffsets = true)
+      counter += 1
+      (key, count)
+    }
   }
 }

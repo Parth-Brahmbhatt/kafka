@@ -10,22 +10,8 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
-package org.apache.kafka.clients;
+package org.apache.kafka.clients.consumer;
 
-/**
- * The state of our connection to a node
- */
-final class NodeConnectionState {
-
-    ConnectionState state;
-    long lastConnectAttemptMs;
-
-    public NodeConnectionState(ConnectionState state, long lastConnectAttempt) {
-        this.state = state;
-        this.lastConnectAttemptMs = lastConnectAttempt;
-    }
-
-    public String toString() {
-        return "NodeState(" + state + ", " + lastConnectAttemptMs + ")";
-    }
+public enum CommitType {
+    SYNC, ASYNC
 }

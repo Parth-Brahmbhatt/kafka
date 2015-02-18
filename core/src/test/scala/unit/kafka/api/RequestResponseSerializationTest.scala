@@ -59,7 +59,7 @@ object SerializationTestUtils {
   private val partitionDataMessage3 = new ByteBufferMessageSet(new Message("fourth message".getBytes))
   private val partitionDataProducerRequestArray = Array(partitionDataMessage0, partitionDataMessage1, partitionDataMessage2, partitionDataMessage3)
 
-  private val topicDataProducerRequest = {
+  val topicDataProducerRequest = {
     val groupedData = Array(topic1, topic2).flatMap(topic =>
       partitionDataProducerRequestArray.zipWithIndex.map
       {
@@ -192,7 +192,7 @@ object SerializationTestUtils {
   }
 
   def createConsumerMetadataResponse: ConsumerMetadataResponse = {
-    ConsumerMetadataResponse(Some(brokers.head), ErrorMapping.NoError)
+    ConsumerMetadataResponse(Some(brokers.head), ErrorMapping.NoError, 0)
   }
 
   def createHeartbeatRequestAndHeader: HeartbeatRequestAndHeader = {
@@ -237,7 +237,7 @@ class RequestResponseSerializationTest extends JUnitSuite {
   private val offsetFetchResponse = SerializationTestUtils.createTestOffsetFetchResponse
   private val consumerMetadataRequest = SerializationTestUtils.createConsumerMetadataRequest
   private val consumerMetadataResponse = SerializationTestUtils.createConsumerMetadataResponse
-  private val consumerMetadataResponseNoCoordinator = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode)
+  private val consumerMetadataResponseNoCoordinator = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, 0)
   private val heartbeatRequest = SerializationTestUtils.createHeartbeatRequestAndHeader
   private val heartbeatResponse = SerializationTestUtils.createHeartbeatResponseAndHeader
   private val joinGroupRequest = SerializationTestUtils.createJoinGroupRequestAndHeader
