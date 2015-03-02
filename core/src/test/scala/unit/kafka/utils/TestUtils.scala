@@ -387,7 +387,8 @@ object TestUtils extends Logging {
                         metadataFetchTimeout: Long = 3000L,
                         blockOnBufferFull: Boolean = true,
                         bufferSize: Long = 1024L * 1024L,
-                        retries: Int = 0) : KafkaProducer[Array[Byte],Array[Byte]] = {
+                        retries: Int = 0,
+                        lingerMs: Long = 0) : KafkaProducer[Array[Byte],Array[Byte]] = {
     import org.apache.kafka.clients.producer.ProducerConfig
 
     val producerProps = new Properties()
@@ -399,6 +400,7 @@ object TestUtils extends Logging {
     producerProps.put(ProducerConfig.RETRIES_CONFIG, retries.toString)
     producerProps.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "100")
     producerProps.put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, "200")
+    producerProps.put(ProducerConfig.LINGER_MS_CONFIG, lingerMs.toString)
     producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     return new KafkaProducer[Array[Byte],Array[Byte]](producerProps)
@@ -801,9 +803,9 @@ object TestUtils extends Logging {
     val topicAndPartitions = (0 until numPartitions).map(TopicAndPartition(topic, _))
     // wait until admin path for delete topic is deleted, signaling completion of topic deletion
     TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getDeleteTopicPath(topic)),
-      "Admin path /admin/delete_topic/test path not deleted even after a replica is restarted")
+      "Admin path /admin/delete_topic/%s path not deleted even after a replica is restarted".format(topic))
     TestUtils.waitUntilTrue(() => !ZkUtils.pathExists(zkClient, ZkUtils.getTopicPath(topic)),
-      "Topic path /brokers/topics/test not deleted after /admin/delete_topic/test path is deleted")
+      "Topic path /brokers/topics/%s not deleted after /admin/delete_topic/%s path is deleted".format(topic, topic))
     // ensure that the topic-partition has been deleted from all brokers' replica managers
     TestUtils.waitUntilTrue(() =>
       servers.forall(server => topicAndPartitions.forall(tp => server.replicaManager.getPartition(tp.topic, tp.partition) == None)),
