@@ -25,6 +25,7 @@ import java.util.Random
 import java.util.Properties
 
 import org.apache.kafka.common.utils.Utils._
+import org.easymock.EasyMock
 
 import collection.mutable.ListBuffer
 
@@ -742,8 +743,11 @@ object TestUtils extends Logging {
                        defaultConfig: LogConfig = LogConfig(),
                        cleanerConfig: CleanerConfig = CleanerConfig(enableCleaner = false),
                        time: MockTime = new MockTime()): LogManager = {
+    val zkClient = EasyMock.createMock(classOf[ZkClient])
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = zkClient, KafkaConfig.fromProps(defaultConfig.toProps))
+
     new LogManager(logDirs = logDirs,
-                   topicConfigs = Map(),
+                   topicConfigCache = topicConfigCache,
                    defaultConfig = defaultConfig,
                    cleanerConfig = cleanerConfig,
                    ioThreads = 4,

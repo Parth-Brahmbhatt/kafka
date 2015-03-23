@@ -17,7 +17,10 @@
 
 package kafka.log
 
+import java.util.Properties
+
 import junit.framework.Assert._
+import kafka.server.{KafkaConfig, TopicConfigCache}
 import org.scalatest.junit.JUnitSuite
 import org.junit.{After, Test}
 import java.nio._
@@ -228,8 +231,14 @@ class CleanerTest extends JUnitSuite {
     checkRange(map, segments(3).baseOffset.toInt, log.logEndOffset.toInt)
   }
   
-  def makeLog(dir: File = dir, config: LogConfig = logConfig) =
-    new Log(dir = dir, config = config, recoveryPoint = 0L, scheduler = time.scheduler, time = time)
+  def makeLog(dir: File = dir, config: LogConfig = logConfig): Log = {
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(dir).topic, config.toProps)
+
+    val log = new Log(dir = dir, topicConfigCache = topicConfigCache, recoveryPoint = 0L, scheduler = time.scheduler, time = time)
+
+    return log
+  }
 
   def noOpCheckDone(topicAndPartition: TopicAndPartition) { /* do nothing */  }
 

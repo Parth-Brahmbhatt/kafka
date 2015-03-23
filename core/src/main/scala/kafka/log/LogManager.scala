@@ -18,11 +18,12 @@
 package kafka.log
 
 import java.io._
+import java.util.Properties
 import java.util.concurrent.TimeUnit
 import kafka.utils._
 import scala.collection._
 import kafka.common.{TopicAndPartition, KafkaException}
-import kafka.server.{RecoveringFromUncleanShutdown, BrokerState, OffsetCheckpoint}
+import kafka.server.{TopicConfigCache, RecoveringFromUncleanShutdown, BrokerState, OffsetCheckpoint}
 import java.util.concurrent.{Executors, ExecutorService, ExecutionException, Future}
 
 /**
@@ -37,7 +38,7 @@ import java.util.concurrent.{Executors, ExecutorService, ExecutionException, Fut
  */
 @threadsafe
 class LogManager(val logDirs: Array[File],
-                 val topicConfigs: Map[String, LogConfig],
+                 val topicConfigCache: TopicConfigCache,
                  val defaultConfig: LogConfig,
                  val cleanerConfig: CleanerConfig,
                  ioThreads: Int,
@@ -136,10 +137,9 @@ class LogManager(val logDirs: Array[File],
           debug("Loading log '" + logDir.getName + "'")
 
           val topicPartition = Log.parseTopicPartitionName(logDir)
-          val config = topicConfigs.getOrElse(topicPartition.topic, defaultConfig)
           val logRecoveryPoint = recoveryPoints.getOrElse(topicPartition, 0L)
 
-          val current = new Log(logDir, config, logRecoveryPoint, scheduler, time)
+          val current = new Log(logDir, topicConfigCache, logRecoveryPoint, scheduler, time)
           val previous = this.logs.put(topicPartition, current)
 
           if (previous != null) {
@@ -334,29 +334,28 @@ class LogManager(val logDirs: Array[File],
    * Create a log for the given topic and the given partition
    * If the log already exists, just return a copy of the existing log
    */
-  def createLog(topicAndPartition: TopicAndPartition, config: LogConfig): Log = {
+  def createLog(topicAndPartition: TopicAndPartition): Log = {
     logCreationOrDeletionLock synchronized {
       var log = logs.get(topicAndPartition)
-      
+
       // check if the log has already been created in another thread
       if(log != null)
         return log
-      
+
       // if not, create it
       val dataDir = nextLogDir()
       val dir = new File(dataDir, topicAndPartition.topic + "-" + topicAndPartition.partition)
       dir.mkdirs()
-      log = new Log(dir, 
-                    config,
+      log = new Log(dir,
+                    topicConfigCache,
                     recoveryPoint = 0L,
                     scheduler,
                     time)
       logs.put(topicAndPartition, log)
-      info("Created log for partition [%s,%d] in %s with properties {%s}."
+      info("Created log for partition [%s,%d] in %s."
            .format(topicAndPartition.topic, 
                    topicAndPartition.partition, 
-                   dataDir.getAbsolutePath,
-                   {import JavaConversions._; config.toProps.mkString(", ")}))
+                   dataDir.getAbsolutePath))
       log
     }
   }
@@ -408,7 +407,8 @@ class LogManager(val logDirs: Array[File],
    */
   private def cleanupExpiredSegments(log: Log): Int = {
     val startMs = time.milliseconds
-    log.deleteOldSegments(startMs - _.lastModified > log.config.retentionMs)
+    val retentionMs = LogConfig.fromProps(topicConfigCache.getTopicConfig(log.topicAndPartition.topic)).retentionMs
+    log.deleteOldSegments(startMs - _.lastModified > retentionMs)
   }
 
   /**
@@ -416,9 +416,10 @@ class LogManager(val logDirs: Array[File],
    *  is at least logRetentionSize bytes in size
    */
   private def cleanupSegmentsToMaintainSize(log: Log): Int = {
-    if(log.config.retentionSize < 0 || log.size < log.config.retentionSize)
+    val retentionSize = LogConfig.fromProps(topicConfigCache.getTopicConfig(log.topicAndPartition.topic)).retentionSize
+    if(retentionSize < 0 || log.size < retentionSize)
       return 0
-    var diff = log.size - log.config.retentionSize
+    var diff = log.size - retentionSize
     def shouldDelete(segment: LogSegment) = {
       if(diff - segment.size >= 0) {
         diff -= segment.size
@@ -437,7 +438,8 @@ class LogManager(val logDirs: Array[File],
     debug("Beginning log cleanup...")
     var total = 0
     val startMs = time.milliseconds
-    for(log <- allLogs; if !log.config.compact) {
+
+    for(log <- allLogs; if !LogConfig.fromProps(topicConfigCache.getTopicConfig(log.topicAndPartition.topic)).compact) {
       debug("Garbage collecting '" + log.name + "'")
       total += cleanupExpiredSegments(log) + cleanupSegmentsToMaintainSize(log)
     }
@@ -473,9 +475,10 @@ class LogManager(val logDirs: Array[File],
     for ((topicAndPartition, log) <- logs) {
       try {
         val timeSinceLastFlush = time.milliseconds - log.lastFlushTime
-        debug("Checking if flush is needed on " + topicAndPartition.topic + " flush interval  " + log.config.flushMs +
+        val flushMs = LogConfig.fromProps(topicConfigCache.getTopicConfig(log.topicAndPartition.topic)).flushMs
+        debug("Checking if flush is needed on " + topicAndPartition.topic + " flush interval  " + flushMs +
               " last flushed " + log.lastFlushTime + " time since last flush: " + timeSinceLastFlush)
-        if(timeSinceLastFlush >= log.config.flushMs)
+        if(timeSinceLastFlush >= flushMs)
           log.flush
       } catch {
         case e: Throwable =>

@@ -25,7 +25,7 @@ import org.junit.{After, Before, Test}
 import kafka.message._
 import kafka.common.{MessageSizeTooLargeException, OffsetOutOfRangeException, MessageSetSizeTooLargeException}
 import kafka.utils._
-import kafka.server.KafkaConfig
+import kafka.server.{TopicConfigCache, KafkaConfig}
 
 class LogTest extends JUnitSuite {
   
@@ -61,12 +61,17 @@ class LogTest extends JUnitSuite {
   def testTimeBasedLogRoll() {
     val set = TestUtils.singleMessageSet("test".getBytes())
 
+    val config: LogConfig = logConfig.copy(segmentMs = 1 * 60 * 60L)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     // create a log
     val log = new Log(logDir,
-                      logConfig.copy(segmentMs = 1 * 60 * 60L),
+                      topicConfigCache = topicConfigCache,
                       recoveryPoint = 0L,
                       scheduler = time.scheduler,
                       time = time)
+
     assertEquals("Log begins with a single empty segment.", 1, log.numberOfSegments)
     time.sleep(log.config.segmentMs + 1)
     log.append(set)
@@ -96,9 +101,13 @@ class LogTest extends JUnitSuite {
     val set = TestUtils.singleMessageSet("test".getBytes())
     val maxJitter = 20 * 60L
 
+    val config: LogConfig = logConfig.copy(segmentMs = 1 * 60 * 60L, segmentJitterMs = maxJitter)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     // create a log
     val log = new Log(logDir,
-      logConfig.copy(segmentMs = 1 * 60 * 60L, segmentJitterMs = maxJitter),
+      topicConfigCache = topicConfigCache,
       recoveryPoint = 0L,
       scheduler = time.scheduler,
       time = time)
@@ -124,7 +133,11 @@ class LogTest extends JUnitSuite {
     val segmentSize = msgPerSeg * (setSize - 1) // each segment will be 10 messages
 
     // create a log
-    val log = new Log(logDir, logConfig.copy(segmentSize = segmentSize), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = segmentSize)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     assertEquals("There should be exactly 1 segment.", 1, log.numberOfSegments)
 
     // segments expire in size
@@ -140,7 +153,11 @@ class LogTest extends JUnitSuite {
   @Test
   def testLoadEmptyLog() {
     createEmptyLogs(logDir, 0)
-    val log = new Log(logDir, logConfig, recoveryPoint = 0L, time.scheduler, time = time)
+
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, logConfig.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     log.append(TestUtils.singleMessageSet("test".getBytes))
   }
 
@@ -149,7 +166,11 @@ class LogTest extends JUnitSuite {
    */
   @Test
   def testAppendAndReadWithSequentialOffsets() {
-    val log = new Log(logDir, logConfig.copy(segmentSize = 71), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = 71)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     val messages = (0 until 100 by 2).map(id => new Message(id.toString.getBytes)).toArray
 
     for(i <- 0 until messages.length)
@@ -168,7 +189,11 @@ class LogTest extends JUnitSuite {
    */
   @Test
   def testAppendAndReadWithNonSequentialOffsets() {
-    val log = new Log(logDir, logConfig.copy(segmentSize = 71), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = 71)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     val messageIds = ((0 until 50) ++ (50 until 200 by 7)).toArray
     val messages = messageIds.map(id => new Message(id.toString.getBytes))
 
@@ -191,7 +216,11 @@ class LogTest extends JUnitSuite {
    */
   @Test
   def testReadAtLogGap() {
-    val log = new Log(logDir, logConfig.copy(segmentSize = 300), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = 300)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
 
     // keep appending until we have two segments with only a single message in the second segment
     while(log.numberOfSegments == 1)
@@ -211,7 +240,12 @@ class LogTest extends JUnitSuite {
   @Test
   def testReadOutOfRange() {
     createEmptyLogs(logDir, 1024)
-    val log = new Log(logDir, logConfig.copy(segmentSize = 1024), recoveryPoint = 0L, time.scheduler, time = time)
+
+    val config: LogConfig = logConfig.copy(segmentSize = 1024)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     assertEquals("Reading just beyond end of log should produce 0 byte read.", 0, log.read(1024, 1000).messageSet.sizeInBytes)
     try {
       log.read(0, 1024)
@@ -234,7 +268,11 @@ class LogTest extends JUnitSuite {
   @Test
   def testLogRolls() {
     /* create a multipart log with 100 messages */
-    val log = new Log(logDir, logConfig.copy(segmentSize = 100), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = 100)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
     val numMessages = 100
     val messageSets = (0 until numMessages).map(i => TestUtils.singleMessageSet(i.toString.getBytes))
     messageSets.foreach(log.append(_))
@@ -263,7 +301,10 @@ class LogTest extends JUnitSuite {
   @Test
   def testCompressedMessages() {
     /* this log should roll after every messageset */
-    val log = new Log(logDir, logConfig.copy(segmentSize = 100), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = 100)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
 
     /* append 2 compressed message sets, each with two messages giving offsets 0, 1, 2, 3 */
     log.append(new ByteBufferMessageSet(DefaultCompressionCodec, new Message("hello".getBytes), new Message("there".getBytes)))
@@ -286,7 +327,11 @@ class LogTest extends JUnitSuite {
     for(messagesToAppend <- List(0, 1, 25)) {
       logDir.mkdirs()
       // first test a log segment starting at 0
-      val log = new Log(logDir, logConfig.copy(segmentSize = 100), recoveryPoint = 0L, time.scheduler, time = time)
+      val config: LogConfig = logConfig.copy(segmentSize = 100)
+      val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+      topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+      val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
       for(i <- 0 until messagesToAppend)
         log.append(TestUtils.singleMessageSet(i.toString.getBytes))
 
@@ -318,7 +363,12 @@ class LogTest extends JUnitSuite {
     val messageSet = new ByteBufferMessageSet(NoCompressionCodec, new Message ("You".getBytes), new Message("bethe".getBytes))
     // append messages to log
     val configSegmentSize = messageSet.sizeInBytes - 1
-    val log = new Log(logDir, logConfig.copy(segmentSize = configSegmentSize), recoveryPoint = 0L, time.scheduler, time = time)
+
+    val config: LogConfig = logConfig.copy(segmentSize = configSegmentSize)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
 
     try {
       log.append(messageSet)
@@ -341,7 +391,11 @@ class LogTest extends JUnitSuite {
     val messageSetWithKeyedMessage = new ByteBufferMessageSet(NoCompressionCodec, keyedMessage)
     val messageSetWithKeyedMessages = new ByteBufferMessageSet(NoCompressionCodec, keyedMessage, anotherKeyedMessage)
 
-    val log = new Log(logDir, logConfig.copy(compact = true), recoveryPoint = 0L, time.scheduler, time)
+    val config: LogConfig = logConfig.copy(compact = true)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time)
 
     try {
       log.append(messageSetWithUnkeyedMessage)
@@ -367,7 +421,10 @@ class LogTest extends JUnitSuite {
     log.append(messageSetWithKeyedMessages)
 
     // test that a compacted topic with broker-side compression type set to uncompressed can accept compressed messages
-    val uncompressedLog = new Log(logDir, logConfig.copy(compact = true, compressionType = "uncompressed"),
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic,
+      logConfig.copy(compact = true, compressionType = "uncompressed").toProps)
+
+    val uncompressedLog = new Log(logDir, topicConfigCache,
                                   recoveryPoint = 0L, time.scheduler, time)
     uncompressedLog.append(messageSetWithCompressedKeyedMessage)
     uncompressedLog.append(messageSetWithKeyedMessage)
@@ -397,7 +454,11 @@ class LogTest extends JUnitSuite {
 
     // append messages to log
     val maxMessageSize = second.sizeInBytes - 1
-    val log = new Log(logDir, logConfig.copy(maxMessageSize = maxMessageSize), recoveryPoint = 0L, time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(maxMessageSize = maxMessageSize)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time = time)
 
     // should be able to append the small message
     log.append(first)
@@ -419,7 +480,10 @@ class LogTest extends JUnitSuite {
     val segmentSize = 7 * messageSize
     val indexInterval = 3 * messageSize
     val config = logConfig.copy(segmentSize = segmentSize, indexInterval = indexInterval, maxIndexSize = 4096)
-    var log = new Log(logDir, config, recoveryPoint = 0L, time.scheduler, time)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    var log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time)
     for(i <- 0 until numMessages)
       log.append(TestUtils.singleMessageSet(TestUtils.randomBytes(messageSize)))
     assertEquals("After appending %d messages to an empty log, the log end offset should be %d".format(numMessages, numMessages), numMessages, log.logEndOffset)
@@ -428,14 +492,14 @@ class LogTest extends JUnitSuite {
     val lastOffset = log.logEndOffset
     log.close()
 
-    log = new Log(logDir, config, recoveryPoint = lastOffset, time.scheduler, time)
+    log = new Log(logDir, topicConfigCache, recoveryPoint = lastOffset, time.scheduler, time)
     assertEquals("Should have %d messages when log is reopened w/o recovery".format(numMessages), numMessages, log.logEndOffset)
     assertEquals("Should have same last index offset as before.", lastIndexOffset, log.activeSegment.index.lastOffset)
     assertEquals("Should have same number of index entries as before.", numIndexEntries, log.activeSegment.index.entries)
     log.close()
 
     // test recovery case
-    log = new Log(logDir, config, recoveryPoint = 0L, time.scheduler, time)
+    log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time)
     assertEquals("Should have %d messages when log is reopened with recovery".format(numMessages), numMessages, log.logEndOffset)
     assertEquals("Should have same last index offset as before.", lastIndexOffset, log.activeSegment.index.lastOffset)
     assertEquals("Should have same number of index entries as before.", numIndexEntries, log.activeSegment.index.entries)
@@ -450,7 +514,10 @@ class LogTest extends JUnitSuite {
     // publish the messages and close the log
     val numMessages = 200
     val config = logConfig.copy(segmentSize = 200, indexInterval = 1)
-    var log = new Log(logDir, config, recoveryPoint = 0L, time.scheduler, time)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    var log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time)
     for(i <- 0 until numMessages)
       log.append(TestUtils.singleMessageSet(TestUtils.randomBytes(10)))
     val indexFiles = log.logSegments.map(_.index.file)
@@ -460,7 +527,7 @@ class LogTest extends JUnitSuite {
     indexFiles.foreach(_.delete())
 
     // reopen the log
-    log = new Log(logDir, config, recoveryPoint = 0L, time.scheduler, time)
+    log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, time.scheduler, time)
     assertEquals("Should have %d messages when log is reopened".format(numMessages), numMessages, log.logEndOffset)
     for(i <- 0 until numMessages)
       assertEquals(i, log.read(i, 100, None).messageSet.head.offset)
@@ -478,7 +545,11 @@ class LogTest extends JUnitSuite {
     val segmentSize = msgPerSeg * setSize  // each segment will be 10 messages
 
     // create a log
-    val log = new Log(logDir, logConfig.copy(segmentSize = segmentSize), recoveryPoint = 0L, scheduler = time.scheduler, time = time)
+    val config: LogConfig = logConfig.copy(segmentSize = segmentSize)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, scheduler = time.scheduler, time = time)
     assertEquals("There should be exactly 1 segment.", 1, log.numberOfSegments)
 
     for (i<- 1 to msgPerSeg)
@@ -530,8 +601,12 @@ class LogTest extends JUnitSuite {
     val setSize = set.sizeInBytes
     val msgPerSeg = 10
     val segmentSize = msgPerSeg * setSize  // each segment will be 10 messages
-    val config = logConfig.copy(segmentSize = segmentSize)
-    val log = new Log(logDir, config, recoveryPoint = 0L, scheduler = time.scheduler, time = time)
+
+    val config: LogConfig = logConfig.copy(segmentSize = segmentSize)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(logConfig.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
+    val log = new Log(logDir, topicConfigCache, recoveryPoint = 0L, scheduler = time.scheduler, time = time)
     assertEquals("There should be exactly 1 segment.", 1, log.numberOfSegments)
     for (i<- 1 to msgPerSeg)
       log.append(set)
@@ -557,10 +632,13 @@ class LogTest extends JUnitSuite {
     val bogusIndex2 = Log.indexFilename(logDir, 5)
 
     val set = TestUtils.singleMessageSet("test".getBytes())
+
+    val config: LogConfig = logConfig.copy(segmentSize = set.sizeInBytes * 5, maxIndexSize = 1000, indexInterval = 1)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(logConfig.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     val log = new Log(logDir,
-                      logConfig.copy(segmentSize = set.sizeInBytes * 5,
-                                     maxIndexSize = 1000,
-                                     indexInterval = 1),
+                      topicConfigCache,
                       recoveryPoint = 0L,
                       time.scheduler,
                       time)
@@ -584,10 +662,12 @@ class LogTest extends JUnitSuite {
     val config = logConfig.copy(segmentSize = set.sizeInBytes * 5,
                                 maxIndexSize = 1000,
                                 indexInterval = 10000)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
 
     // create a log
     var log = new Log(logDir,
-                      config,
+                      topicConfigCache,
                       recoveryPoint = 0L,
                       time.scheduler,
                       time)
@@ -597,7 +677,7 @@ class LogTest extends JUnitSuite {
       log.append(set)
     log.close()
     log = new Log(logDir,
-                  config,
+                  topicConfigCache,
                   recoveryPoint = 0L,
                   time.scheduler,
                   time)
@@ -617,8 +697,11 @@ class LogTest extends JUnitSuite {
                                 fileDeleteDelayMs = asyncDeleteMs,
                                 maxIndexSize = 1000,
                                 indexInterval = 10000)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     val log = new Log(logDir,
-                      config,
+                      topicConfigCache,
                       recoveryPoint = 0L,
                       time.scheduler,
                       time)
@@ -651,9 +734,13 @@ class LogTest extends JUnitSuite {
   @Test
   def testOpenDeletesObsoleteFiles() {
     val set = TestUtils.singleMessageSet("test".getBytes())
+
     val config = logConfig.copy(segmentSize = set.sizeInBytes * 5, maxIndexSize = 1000)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     var log = new Log(logDir,
-                      config,
+                      topicConfigCache,
                       recoveryPoint = 0L,
                       time.scheduler,
                       time)
@@ -666,7 +753,7 @@ class LogTest extends JUnitSuite {
     log.close()
 
     log = new Log(logDir,
-                  config,
+                  topicConfigCache,
                   recoveryPoint = 0L,
                   time.scheduler,
                   time)
@@ -675,8 +762,11 @@ class LogTest extends JUnitSuite {
 
   @Test
   def testAppendMessageWithNullPayload() {
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, new LogConfig().toProps)
+
     val log = new Log(logDir,
-                      LogConfig(),
+                      topicConfigCache,
                       recoveryPoint = 0L,
                       time.scheduler,
                       time)
@@ -690,13 +780,16 @@ class LogTest extends JUnitSuite {
   def testCorruptLog() {
     // append some messages to create some segments
     val config = logConfig.copy(indexInterval = 1, maxMessageSize = 64*1024, segmentSize = 1000)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     val set = TestUtils.singleMessageSet("test".getBytes())
     val recoveryPoint = 50L
     for(iteration <- 0 until 50) {
       // create a log and write some messages to it
       logDir.mkdirs()
       var log = new Log(logDir,
-                        config,
+                        topicConfigCache,
                         recoveryPoint = 0L,
                         time.scheduler,
                         time)
@@ -711,7 +804,7 @@ class LogTest extends JUnitSuite {
       TestUtils.appendNonsenseToFile(log.activeSegment.log.file, TestUtils.random.nextInt(1024) + 1)
 
       // attempt recovery
-      log = new Log(logDir, config, recoveryPoint, time.scheduler, time)
+      log = new Log(logDir, topicConfigCache, recoveryPoint, time.scheduler, time)
       assertEquals(numMessages, log.logEndOffset)
       assertEquals("Messages in the log after recovery should be the same.", messages, log.logSegments.flatMap(_.log.iterator.toList))
       Utils.rm(logDir)
@@ -722,6 +815,9 @@ class LogTest extends JUnitSuite {
   def testCleanShutdownFile() {
     // append some messages to create some segments
     val config = logConfig.copy(indexInterval = 1, maxMessageSize = 64*1024, segmentSize = 1000)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, config.toProps)
+
     val set = TestUtils.singleMessageSet("test".getBytes())
     val parentLogDir = logDir.getParentFile
     assertTrue("Data directory %s must exist", parentLogDir.isDirectory)
@@ -731,7 +827,7 @@ class LogTest extends JUnitSuite {
     var recoveryPoint = 0L
     // create a log and write some messages to it
     var log = new Log(logDir,
-      config,
+      topicConfigCache,
       recoveryPoint = 0L,
       time.scheduler,
       time)
@@ -742,7 +838,7 @@ class LogTest extends JUnitSuite {
     // check if recovery was attempted. Even if the recovery point is 0L, recovery should not be attempted as the
     // clean shutdown file exists.
     recoveryPoint = log.logEndOffset
-    log = new Log(logDir, config, 0L, time.scheduler, time)
+    log = new Log(logDir, topicConfigCache, 0L, time.scheduler, time)
     assertEquals(recoveryPoint, log.logEndOffset)
     cleanShutdownFile.delete()
   }

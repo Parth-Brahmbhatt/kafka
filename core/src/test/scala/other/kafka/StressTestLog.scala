@@ -17,10 +17,12 @@
 
 package kafka
 
+import java.util.Properties
 import java.util.concurrent.atomic._
 import kafka.common._
 import kafka.message._
 import kafka.log._
+import kafka.server.{KafkaConfig, TopicConfigCache}
 import kafka.utils._
 
 /**
@@ -33,13 +35,15 @@ object StressTestLog {
   def main(args: Array[String]) {
     val dir = TestUtils.tempDir()
     val time = new MockTime
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(new Properties))
+    val logConfig: LogConfig =  LogConfig(segmentSize = 64*1024*1024, maxMessageSize = Int.MaxValue, maxIndexSize = 1024*1024)
     val log = new Log(dir = dir,
-                      config = LogConfig(segmentSize = 64*1024*1024,
-                                         maxMessageSize = Int.MaxValue,
-                                         maxIndexSize = 1024*1024),
+                      topicConfigCache = topicConfigCache,
                       recoveryPoint = 0L,
                       scheduler = time.scheduler,
                       time = time)
+
+    topicConfigCache.addOrUpdateTopicConfig(log.topicAndPartition.topic, logConfig.toProps)
     val writer = new WriterThread(log)
     writer.start()
     val reader = new ReaderThread(log)

@@ -57,7 +57,8 @@ class LogManagerTest extends JUnit3Suite {
    */
   @Test
   def testCreateLog() {
-    val log = logManager.createLog(TopicAndPartition(name, 0), logConfig)
+    logManager.topicConfigCache.addOrUpdateTopicConfig(name, logManager.defaultConfig.toProps)
+    val log = logManager.createLog(TopicAndPartition(name, 0))
     val logFile = new File(logDir, name + "-0")
     assertTrue(logFile.exists)
     log.append(TestUtils.singleMessageSet("test".getBytes()))
@@ -79,7 +80,8 @@ class LogManagerTest extends JUnit3Suite {
    */
   @Test
   def testCleanupExpiredSegments() {
-    val log = logManager.createLog(TopicAndPartition(name, 0), logConfig)
+    logManager.topicConfigCache.addOrUpdateTopicConfig(name, logManager.defaultConfig.toProps)
+    val log = logManager.createLog(TopicAndPartition(name, 0))
     var offset = 0L
     for(i <- 0 until 200) {
       var set = TestUtils.singleMessageSet("test".getBytes())
@@ -118,8 +120,10 @@ class LogManagerTest extends JUnit3Suite {
     logManager = createLogManager()
     logManager.startup
 
+    logManager.topicConfigCache.addOrUpdateTopicConfig(name, config.toProps)
+
     // create a log
-    val log = logManager.createLog(TopicAndPartition(name, 0), config)
+    val log = logManager.createLog(TopicAndPartition(name, 0))
     var offset = 0L
 
     // add a bunch of messages that should be larger than the retentionSize
@@ -157,7 +161,9 @@ class LogManagerTest extends JUnit3Suite {
     val config = logConfig.copy(flushMs = 1000)
     logManager = createLogManager()
     logManager.startup
-    val log = logManager.createLog(TopicAndPartition(name, 0), config)
+    logManager.topicConfigCache.addOrUpdateTopicConfig(name, config.toProps)
+
+    val log = logManager.createLog(TopicAndPartition(name, 0))
     val lastFlush = log.lastFlushTime
     for(i <- 0 until 200) {
       var set = TestUtils.singleMessageSet("test".getBytes())
@@ -179,9 +185,11 @@ class LogManagerTest extends JUnit3Suite {
     logManager.shutdown()
     logManager = createLogManager()
 
+    logManager.topicConfigCache.addOrUpdateTopicConfig("test", logConfig.toProps)
+
     // verify that logs are always assigned to the least loaded partition
     for(partition <- 0 until 20) {
-      logManager.createLog(TopicAndPartition("test", partition), logConfig)
+      logManager.createLog(TopicAndPartition("test", partition))
       assertEquals("We should have created the right number of logs", partition + 1, logManager.allLogs.size)
       val counts = logManager.allLogs.groupBy(_.dir.getParent).values.map(_.size)
       assertTrue("Load should balance evenly", counts.max <= counts.min + 1)
@@ -206,6 +214,8 @@ class LogManagerTest extends JUnit3Suite {
    */
   @Test
   def testCheckpointRecoveryPoints() {
+    logManager.topicConfigCache.addOrUpdateTopicConfig("test-a", logConfig.toProps)
+    logManager.topicConfigCache.addOrUpdateTopicConfig("test-b", logConfig.toProps)
     verifyCheckpointRecovery(Seq(TopicAndPartition("test-a", 1), TopicAndPartition("test-b", 1)), logManager)
   }
 
@@ -219,6 +229,7 @@ class LogManagerTest extends JUnit3Suite {
     logManager = TestUtils.createLogManager(
       logDirs = Array(new File(logDir.getAbsolutePath + File.separator)))
     logManager.startup
+    logManager.topicConfigCache.addOrUpdateTopicConfig("test-a", logConfig.toProps)
     verifyCheckpointRecovery(Seq(TopicAndPartition("test-a", 1)), logManager)
   }
 
@@ -233,13 +244,15 @@ class LogManagerTest extends JUnit3Suite {
     logDir.deleteOnExit()
     logManager = createLogManager()
     logManager.startup
+    logManager.topicConfigCache.addOrUpdateTopicConfig("test-a", logConfig.toProps)
+
     verifyCheckpointRecovery(Seq(TopicAndPartition("test-a", 1)), logManager)
   }
 
 
   private def verifyCheckpointRecovery(topicAndPartitions: Seq[TopicAndPartition],
                                        logManager: LogManager) {
-    val logs = topicAndPartitions.map(this.logManager.createLog(_, logConfig))
+    val logs = topicAndPartitions.map(this.logManager.createLog(_))
     logs.foreach(log => {
       for(i <- 0 until 50)
         log.append(TestUtils.singleMessageSet("test".getBytes()))

@@ -18,7 +18,7 @@
 package kafka.log
 
 import java.io.File
-import kafka.server.OffsetCheckpoint
+import kafka.server.{KafkaConfig, TopicConfigCache, OffsetCheckpoint}
 
 import scala.collection._
 import org.junit._
@@ -114,12 +114,17 @@ class LogCleanerIntegrationTest extends JUnitSuite {
     for(i <- 0 until parts) {
       val dir = new File(logDir, "log-" + i)
       dir.mkdirs()
+
+      val config: LogConfig = LogConfig(segmentSize = segmentSize, maxIndexSize = 100*1024, fileDeleteDelayMs = deleteDelay, compact = true)
+      val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(config.toProps))
+      topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(dir).topic, config.toProps)
+
       val log = new Log(dir = dir,
-                        LogConfig(segmentSize = segmentSize, maxIndexSize = 100*1024, fileDeleteDelayMs = deleteDelay, compact = true),
+                        topicConfigCache = topicConfigCache,
                         recoveryPoint = 0L,
                         scheduler = time.scheduler,
                         time = time)
-      logs.put(TopicAndPartition("log", i), log)      
+      logs.put(TopicAndPartition("log", i), log)
     }
   
     new LogCleaner(CleanerConfig(numThreads = numThreads),

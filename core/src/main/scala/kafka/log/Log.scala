@@ -21,7 +21,7 @@ import kafka.utils._
 import kafka.message._
 import kafka.common._
 import kafka.metrics.KafkaMetricsGroup
-import kafka.server.{LogOffsetMetadata, FetchDataInfo, BrokerTopicStats}
+import kafka.server.{TopicConfigCache, LogOffsetMetadata, FetchDataInfo, BrokerTopicStats}
 
 import java.io.{IOException, File}
 import java.util.concurrent.{ConcurrentNavigableMap, ConcurrentSkipListMap}
@@ -57,7 +57,7 @@ case class LogAppendInfo(var firstOffset: Long, var lastOffset: Long, sourceCode
  * for a given segment.
  * 
  * @param dir The directory in which log segments are created.
- * @param config The log configuration settings
+ * @param topicConfigCache topic config cache to access cached log config.
  * @param recoveryPoint The offset at which to begin recovery--i.e. the first offset which has not been flushed to disk
  * @param scheduler The thread pool scheduler used for background actions
  * @param time The time instance used for checking the clock 
@@ -65,7 +65,7 @@ case class LogAppendInfo(var firstOffset: Long, var lastOffset: Long, sourceCode
  */
 @threadsafe
 class Log(val dir: File,
-          @volatile var config: LogConfig,
+          val topicConfigCache : TopicConfigCache,
           @volatile var recoveryPoint: Long = 0L,
           scheduler: Scheduler,
           time: Time = SystemTime) extends Logging with KafkaMetricsGroup {
@@ -78,14 +78,14 @@ class Log(val dir: File,
   /* last time it was flushed */
   private val lastflushedTime = new AtomicLong(time.milliseconds)
 
+  val topicAndPartition: TopicAndPartition = Log.parseTopicPartitionName(dir)
+
   /* the actual segments of the log */
   private val segments: ConcurrentNavigableMap[java.lang.Long, LogSegment] = new ConcurrentSkipListMap[java.lang.Long, LogSegment]
   loadSegments()
   
   /* Calculate the offset of the next message */
   @volatile var nextOffsetMetadata = new LogOffsetMetadata(activeSegment.nextOffset(), activeSegment.baseOffset, activeSegment.size.toInt)
-
-  val topicAndPartition: TopicAndPartition = Log.parseTopicPartitionName(dir)
 
   info("Completed load of log %s with log end offset %d".format(name, logEndOffset))
 
@@ -122,6 +122,8 @@ class Log(val dir: File,
   private def loadSegments() {
     // create the log directory if it doesn't exist
     dir.mkdirs()
+
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     
     // first do a pass through the files in the log directory and remove any temporary files 
     // and complete any interrupted swap operations
@@ -211,6 +213,8 @@ class Log(val dir: File,
       return
     }
 
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
+
     // okay we need to actually recovery this log
     val unflushed = logSegments(this.recoveryPoint, Long.MaxValue).iterator
     while(unflushed.hasNext) {
@@ -278,6 +282,8 @@ class Log(val dir: File,
       
     // trim any invalid bytes or partial messages before appending it to the on-disk log
     var validMessages = trimInvalidBytes(messages, appendInfo)
+
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
 
     try {
       // they are valid, insert them in the log
@@ -363,6 +369,7 @@ class Log(val dir: File,
     var firstOffset, lastOffset = -1L
     var sourceCodec: CompressionCodec = NoCompressionCodec
     var monotonic = true
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     for(messageAndOffset <- messages.shallowIterator) {
       // update the first offset if on the first message
       if(firstOffset < 0)
@@ -534,6 +541,7 @@ class Log(val dir: File,
    */
   private def maybeRoll(messagesSize: Int): LogSegment = {
     val segment = activeSegment
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     if (segment.size > config.segmentSize - messagesSize ||
         segment.size > 0 && time.milliseconds - segment.created > config.segmentMs - segment.rollJitterMs ||
         segment.index.isFull) {
@@ -558,6 +566,7 @@ class Log(val dir: File,
    */
   def roll(): LogSegment = {
     val start = time.nanoseconds
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     lock synchronized {
       val newOffset = logEndOffset
       val logFile = logFilename(dir, newOffset)
@@ -662,6 +671,7 @@ class Log(val dir: File,
    */
   private[log] def truncateFullyAndStartAt(newOffset: Long) {
     debug("Truncate and start log '" + name + "' to " + newOffset)
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     lock synchronized {
       val segmentsToDelete = logSegments.toList
       segmentsToDelete.foreach(deleteSegment(_))
@@ -741,6 +751,7 @@ class Log(val dir: File,
       info("Deleting segment %d from log %s.".format(segment.baseOffset, name))
       segment.delete()
     }
+    val config: LogConfig = LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
     scheduler.schedule("delete-file", deleteSeg, delay = config.fileDeleteDelayMs)
   }
   
@@ -785,7 +796,10 @@ class Log(val dir: File,
    * @param segment The segment to add
    */
   def addSegment(segment: LogSegment) = this.segments.put(segment.baseOffset, segment)
-  
+
+  def config() : LogConfig = {
+    LogConfig.fromProps(topicConfigCache.getTopicConfig(topicAndPartition.topic))
+  }
 }
 
 /**

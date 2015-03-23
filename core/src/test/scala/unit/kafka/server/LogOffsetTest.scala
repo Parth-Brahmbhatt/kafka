@@ -146,7 +146,8 @@ class LogOffsetTest extends JUnit3Suite with ZooKeeperTestHarness {
     AdminUtils.createTopic(zkClient, topic, 3, 1)
 
     val logManager = server.getLogManager
-    val log = logManager.createLog(TopicAndPartition(topic, part), logManager.defaultConfig)
+    logManager.topicConfigCache.addOrUpdateTopicConfig(topic, logManager.defaultConfig.toProps)
+    val log = logManager.createLog(TopicAndPartition(topic, part))
     val message = new Message(Integer.toString(42).getBytes())
     for(i <- 0 until 20)
       log.append(new ByteBufferMessageSet(NoCompressionCodec, message))
@@ -175,7 +176,8 @@ class LogOffsetTest extends JUnit3Suite with ZooKeeperTestHarness {
     AdminUtils.createTopic(zkClient, topic, 3, 1)
 
     val logManager = server.getLogManager
-    val log = logManager.createLog(TopicAndPartition(topic, part), logManager.defaultConfig)
+    logManager.topicConfigCache.addOrUpdateTopicConfig(topic, logManager.defaultConfig.toProps)
+    val log = logManager.createLog(TopicAndPartition(topic, part))
     val message = new Message(Integer.toString(42).getBytes())
     for(i <- 0 until 20)
       log.append(new ByteBufferMessageSet(NoCompressionCodec, message))

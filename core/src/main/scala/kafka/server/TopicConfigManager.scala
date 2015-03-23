@@ -59,7 +59,7 @@ import org.I0Itec.zkclient.{IZkChildListener, ZkClient}
  * 
  */
 class TopicConfigManager(private val zkClient: ZkClient,
-                         private val logManager: LogManager,
+                         private val topicConfigCache: TopicConfigCache,
                          private val changeExpirationMs: Long = 15*60*1000,
                          private val time: Time = SystemTime) extends Logging {
   private var lastExecutedChange = -1L
@@ -89,8 +89,6 @@ class TopicConfigManager(private val zkClient: ZkClient,
     if (notifications.size > 0) {
       info("Processing config change notification(s)...")
       val now = time.milliseconds
-      val logs = logManager.logsByTopicPartition.toBuffer
-      val logsByTopic = logs.groupBy(_._1.topic).mapValues(_.map(_._2))
       for (notification <- notifications) {
         val changeId = changeNumber(notification)
         if (changeId > lastExecutedChange) {
@@ -99,16 +97,11 @@ class TopicConfigManager(private val zkClient: ZkClient,
           if(jsonOpt.isDefined) {
             val json = jsonOpt.get
             val topic = json.substring(1, json.length - 1) // hacky way to dequote
-            if (logsByTopic.contains(topic)) {
               /* combine the default properties with the overrides in zk to create the new LogConfig */
-              val props = new Properties(logManager.defaultConfig.toProps)
-              props.putAll(AdminUtils.fetchTopicConfig(zkClient, topic))
-              val logConfig = LogConfig.fromProps(props)
-              for (log <- logsByTopic(topic))
-                log.config = logConfig
+              val props: Properties = AdminUtils.fetchTopicConfig(zkClient, topic)
+              topicConfigCache.addOrUpdateTopicConfig(topic, props)
               info("Processed topic config change %d for topic %s, setting new config to %s.".format(changeId, topic, props))
               purgeObsoleteNotifications(now, notifications)
-            }
           }
           lastExecutedChange = changeId
         }

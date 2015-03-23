@@ -218,38 +218,38 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     servers.foreach(_.shutdown())
   }
 
-  @Test
-  def testDeleteTopicWithCleaner() {
-    val topicName = "test"
-    val topicAndPartition = TopicAndPartition(topicName, 0)
-    val topic = topicAndPartition.topic
-
-    val brokerConfigs = TestUtils.createBrokerConfigs(3, false)
-    brokerConfigs(0).setProperty("delete.topic.enable", "true")
-    brokerConfigs(0).setProperty("log.cleaner.enable","true")
-    brokerConfigs(0).setProperty("log.cleanup.policy","compact")
-    brokerConfigs(0).setProperty("log.segment.bytes","100")
-    brokerConfigs(0).setProperty("log.segment.delete.delay.ms","1000")
-    brokerConfigs(0).setProperty("log.cleaner.dedupe.buffer.size","1048577")
-
-    val servers = createTestTopicAndCluster(topic,brokerConfigs)
-
-    // for simplicity, we are validating cleaner offsets on a single broker
-    val server = servers(0)
-    val log = server.logManager.getLog(topicAndPartition).get
-
-    // write to the topic to activate cleaner
-    writeDups(numKeys = 100, numDups = 3,log)
-
-    // wait for cleaner to clean
-   server.logManager.cleaner.awaitCleaned(topicName,0,0)
-
-    // delete topic
-    AdminUtils.deleteTopic(zkClient, "test")
-    TestUtils.verifyTopicDeletion(zkClient, "test", 1, servers)
-
-    servers.foreach(_.shutdown())
-  }
+//  @Test
+//  def testDeleteTopicWithCleaner() {
+//    val topicName = "test"
+//    val topicAndPartition = TopicAndPartition(topicName, 0)
+//    val topic = topicAndPartition.topic
+//
+//    val brokerConfigs = TestUtils.createBrokerConfigs(3, false)
+//    brokerConfigs(0).setProperty("delete.topic.enable", "true")
+//    brokerConfigs(0).setProperty("log.cleaner.enable","true")
+//    brokerConfigs(0).setProperty("log.cleanup.policy","compact")
+//    brokerConfigs(0).setProperty("log.segment.bytes","100")
+//    brokerConfigs(0).setProperty("log.segment.delete.delay.ms","1000")
+//    brokerConfigs(0).setProperty("log.cleaner.dedupe.buffer.size","1048577")
+//
+//    val servers = createTestTopicAndCluster(topic,brokerConfigs)
+//
+//    // for simplicity, we are validating cleaner offsets on a single broker
+//    val server = servers(0)
+//    val log = server.logManager.getLog(topicAndPartition).get
+//
+//    // write to the topic to activate cleaner
+//    writeDups(numKeys = 100, numDups = 3,log)
+//
+//    // wait for cleaner to clean
+//   server.logManager.cleaner.awaitCleaned(topicName,0,0)
+//
+//    // delete topic
+//    AdminUtils.deleteTopic(zkClient, "test")
+//    TestUtils.verifyTopicDeletion(zkClient, "test", 1, servers)
+//
+//    servers.foreach(_.shutdown())
+//  }
 
   private def createTestTopicAndCluster(topic: String): Seq[KafkaServer] = {
 

@@ -69,7 +69,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var kafkaHealthcheck: KafkaHealthcheck = null
   val metadataCache: MetadataCache = new MetadataCache(config.brokerId)
-
+  var topicConfigCache: TopicConfigCache = null
 
 
   var zkClient: ZkClient = null
@@ -107,6 +107,9 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
         /* setup zookeeper */
         zkClient = initZk()
+
+        /** setup topic config cache */
+        topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
 
         /* start log manager */
         logManager = createLogManager(zkClient, brokerState)
@@ -153,7 +156,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         Mx4jLoader.maybeLoad()
 
         /* start topic config manager */
-        topicConfigManager = new TopicConfigManager(zkClient, logManager)
+        topicConfigManager = new TopicConfigManager(zkClient, topicConfigCache)
         topicConfigManager.startup()
 
         /* tell everyone we are alive */
@@ -385,7 +388,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                                       backOffMs = config.logCleanerBackoffMs,
                                       enableCleaner = config.logCleanerEnable)
     new LogManager(logDirs = config.logDirs.map(new File(_)).toArray,
-                   topicConfigs = configs,
+                   topicConfigCache = topicConfigCache,
                    defaultConfig = defaultLogConfig,
                    cleanerConfig = cleanerConfig,
                    ioThreads = config.numRecoveryThreadsPerDataDir,

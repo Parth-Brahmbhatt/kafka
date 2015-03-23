@@ -20,8 +20,9 @@ package kafka
 import java.io._
 import java.nio._
 import java.nio.channels._
-import java.util.Random
+import java.util.{Properties, Random}
 import kafka.log._
+import kafka.server.{KafkaConfig, TopicConfigCache}
 import kafka.utils._
 import kafka.message._
 import scala.math._
@@ -194,7 +195,11 @@ object TestLinearWriteSpeed {
   
   class LogWritable(val dir: File, config: LogConfig, scheduler: Scheduler, val messages: ByteBufferMessageSet) extends Writable {
     Utils.rm(dir)
-    val log = new Log(dir, config, 0L, scheduler, SystemTime)
+
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(new Properties))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(dir).topic, config.toProps)
+
+    val log = new Log(dir, topicConfigCache, 0L, scheduler, SystemTime)
     def write(): Int = {
       log.append(messages, true)
       messages.sizeInBytes

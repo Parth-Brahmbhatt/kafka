@@ -26,8 +26,8 @@ import org.junit.Assert._
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
-import java.util.{ Collection, ArrayList }
-import kafka.server.KafkaConfig
+import java.util.{Properties, Collection, ArrayList}
+import kafka.server.{TopicConfigCache, KafkaConfig}
 import org.apache.kafka.common.record.CompressionType
 import scala.collection.JavaConversions._
 
@@ -56,7 +56,10 @@ class BrokerCompressionTest(messageCompression: String, brokerCompression: Strin
     val messageCompressionCode = CompressionCodec.getCompressionCodec(messageCompression)
 
     /*configure broker-side compression  */
-    val log = new Log(logDir, logConfig.copy(compressionType = brokerCompression), recoveryPoint = 0L, time.scheduler, time = time)
+    val topicConfigCache: TopicConfigCache = new TopicConfigCache(brokerId = 1, zkClient = null, KafkaConfig.fromProps(logConfig.toProps))
+    topicConfigCache.addOrUpdateTopicConfig(Log.parseTopicPartitionName(logDir).topic, logConfig.copy(compressionType = brokerCompression).toProps)
+
+    val log = new Log(logDir, topicConfigCache , recoveryPoint = 0L, time.scheduler, time = time)
 
     /* append two messages */
     log.append(new ByteBufferMessageSet(messageCompressionCode, new Message("hello".getBytes), new Message("there".getBytes)))
