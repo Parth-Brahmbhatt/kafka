@@ -60,6 +60,7 @@ import org.I0Itec.zkclient.{IZkChildListener, ZkClient}
  */
 class TopicConfigManager(private val zkClient: ZkClient,
                          private val logManager: LogManager,
+                         private val topicConfigCache: TopicConfigCache,
                          private val changeExpirationMs: Long = 15*60*1000,
                          private val time: Time = SystemTime) extends Logging {
   private var lastExecutedChange = -1L
@@ -103,6 +104,7 @@ class TopicConfigManager(private val zkClient: ZkClient,
               /* combine the default properties with the overrides in zk to create the new LogConfig */
               val props = new Properties(logManager.defaultConfig.toProps)
               props.putAll(AdminUtils.fetchTopicConfig(zkClient, topic))
+              topicConfigCache.addOrUpdateTopicConfig(topic, props)
               val logConfig = LogConfig.fromProps(props)
               for (log <- logsByTopic(topic))
                 log.config = logConfig

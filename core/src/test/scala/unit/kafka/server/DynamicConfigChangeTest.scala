@@ -39,10 +39,23 @@ class DynamicConfigChangeTest extends JUnit3Suite with KafkaServerTestHarness {
       val logOpt = this.servers(0).logManager.getLog(tp)
       assertTrue(logOpt.isDefined)
       assertEquals(oldVal, logOpt.get.config.flushInterval)
+
+      //check config cache gets populated for a new topic.
+      val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
+      assertNotNull(config)
+      assertFalse(config.isEmpty)
+      assertEquals(oldVal, LogConfig.fromProps(config).flushInterval)
     }
+
     AdminUtils.changeTopicConfig(zkClient, tp.topic, LogConfig(flushInterval = newVal).toProps)
     TestUtils.retry(10000) {
       assertEquals(newVal, this.servers(0).logManager.getLog(tp).get.config.flushInterval)
+
+      //check config cache was updated with the new values.
+      val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
+      assertNotNull(config)
+      assertFalse(config.isEmpty)
+      assertEquals(newVal, LogConfig.fromProps(config).flushInterval)
     }
   }
 
