@@ -52,6 +52,7 @@ object ErrorMapping {
   // 21: InvalidRequiredAcks
   // 22: IllegalConsumerGeneration
   val NoOffsetsCommittedCode: Short = 23
+  val AuthorizationCode: Short = 24;
 
   private val exceptionToCode =
     Map[Class[Throwable], Short](
@@ -74,7 +75,8 @@ object ErrorMapping {
       classOf[MessageSetSizeTooLargeException].asInstanceOf[Class[Throwable]] -> MessageSetSizeTooLargeCode,
       classOf[NotEnoughReplicasException].asInstanceOf[Class[Throwable]] -> NotEnoughReplicasCode,
       classOf[NotEnoughReplicasAfterAppendException].asInstanceOf[Class[Throwable]] -> NotEnoughReplicasAfterAppendCode,
-      classOf[NoOffsetsCommittedException].asInstanceOf[Class[Throwable]] -> NoOffsetsCommittedCode
+      classOf[NoOffsetsCommittedException].asInstanceOf[Class[Throwable]] -> NoOffsetsCommittedCode,
+      classOf[AuthorizationException].asInstanceOf[Class[Throwable]] -> NoOffsetsCommittedCode
     ).withDefaultValue(UnknownCode)
 
   /* invert the mapping */

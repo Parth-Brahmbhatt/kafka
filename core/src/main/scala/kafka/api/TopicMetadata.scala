@@ -20,9 +20,12 @@ package kafka.api
 import kafka.cluster.Broker
 import java.nio.ByteBuffer
 import kafka.api.ApiUtils._
+import kafka.security.auth.Acl
 import kafka.utils.Logging
 import kafka.common._
 import org.apache.kafka.common.utils.Utils._
+
+import scala.collection.immutable.HashSet
 
 object TopicMetadata {
   
@@ -31,21 +34,34 @@ object TopicMetadata {
   def readFrom(buffer: ByteBuffer, brokers: Map[Int, Broker]): TopicMetadata = {
     val errorCode = readShortInRange(buffer, "error code", (-1, Short.MaxValue))
     val topic = readShortString(buffer)
+
     val numPartitions = readIntInRange(buffer, "number of partitions", (0, Int.MaxValue))
     val partitionsMetadata: Array[PartitionMetadata] = new Array[PartitionMetadata](numPartitions)
     for(i <- 0 until numPartitions) {
       val partitionMetadata = PartitionMetadata.readFrom(buffer, brokers)
       partitionsMetadata(partitionMetadata.partitionId) = partitionMetadata
     }
-    new TopicMetadata(topic, partitionsMetadata, errorCode)
+
+    val owner = readShortString(buffer)
+
+    var acls: HashSet[Acl] = HashSet[Acl]()
+    val numAcls = readShortInRange(buffer, "number of acls", (0, Short.MaxValue))
+    acls = new HashSet[Acl]
+    for(i <- 0 until numAcls) {
+      acls += Acl.readFrom(buffer)
+    }
+
+    new TopicMetadata(topic, partitionsMetadata, errorCode, owner, acls)
   }
 }
 
-case class TopicMetadata(topic: String, partitionsMetadata: Seq[PartitionMetadata], errorCode: Short = ErrorMapping.NoError) extends Logging {
+case class TopicMetadata(topic: String, partitionsMetadata: Seq[PartitionMetadata], errorCode: Short = ErrorMapping.NoError, owner: String = null, acls: Set[Acl] = HashSet[Acl]()) extends Logging {
   def sizeInBytes: Int = {
-    2 /* error code */ + 
+    2 /* error code */ +
     shortStringLength(topic) + 
-    4 + partitionsMetadata.map(_.sizeInBytes).sum /* size and partition data array */
+    4 + partitionsMetadata.map(_.sizeInBytes).sum + /* size and partition data array */
+    shortStringLength(owner) +
+    2 + acls.map(_.sizeInBytes).sum/* size and acl set */
   }
 
   def writeTo(buffer: ByteBuffer) {
@@ -56,11 +72,29 @@ case class TopicMetadata(topic: String, partitionsMetadata: Seq[PartitionMetadat
     /* number of partitions */
     buffer.putInt(partitionsMetadata.size)
     partitionsMetadata.foreach(m => m.writeTo(buffer))
+
+    /*owner*/
+    writeShortString(buffer, owner)
+
+    /* acls */
+    buffer.putShort(acls.size.toShort)
+    acls.foreach(acl => acl.writeTo(buffer))
   }
 
   override def toString(): String = {
     val topicMetadataInfo = new StringBuilder
     topicMetadataInfo.append("{TopicMetadata for topic %s -> ".format(topic))
+
+    if(owner != null && !owner.isEmpty) {
+      topicMetadataInfo.append(" with owner %s ->".format(owner))
+    }
+
+    if(acls != null && !acls.isEmpty) {
+      topicMetadataInfo.append(" with acls = [")
+      acls.foreach(acl => topicMetadataInfo.append("\n %s".format(acl.toString)))
+      topicMetadataInfo.append("] ")
+    }
+
     errorCode match {
       case ErrorMapping.NoError =>
         partitionsMetadata.foreach { partitionMetadata =>

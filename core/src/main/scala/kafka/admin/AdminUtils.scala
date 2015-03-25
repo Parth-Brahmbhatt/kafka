@@ -20,6 +20,7 @@ package kafka.admin
 import kafka.common._
 import kafka.cluster.Broker
 import kafka.log.LogConfig
+import kafka.security.auth.Acl
 import kafka.utils._
 import kafka.api.{TopicMetadata, PartitionMetadata}
 
@@ -225,7 +226,9 @@ object AdminUtils extends Logging {
                   topic: String,
                   partitions: Int, 
                   replicationFactor: Int, 
-                  topicConfig: Properties = new Properties) {
+                  topicConfig: Properties = new Properties,
+                  owner: String = Acl.wildCardPrincipal,
+                  acls: Acl = Acl.allowAllAcl ) {
     val brokerList = ZkUtils.getSortedBrokerList(zkClient)
     val replicaAssignment = AdminUtils.assignReplicasToBrokers(brokerList, partitions, replicationFactor)
     AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, replicaAssignment, topicConfig)
@@ -235,9 +238,11 @@ object AdminUtils extends Logging {
                                                      topic: String,
                                                      partitionReplicaAssignment: Map[Int, Seq[Int]],
                                                      config: Properties = new Properties,
-                                                     update: Boolean = false) {
+                                                     update: Boolean = false,
+                                                     owner: String = Acl.wildCardPrincipal,
+                                                     acls: Acl = Acl.allowAllAcl) {
     // validate arguments
-    Topic.validate(topic)
+    Topic.validate(topic) //TODO, we should probably ensure owner can not be changed when its an update request.
     LogConfig.validate(config)
     require(partitionReplicaAssignment.values.map(_.size).toSet.size == 1, "All partitions should have the same number of replicas.")
 

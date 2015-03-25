@@ -39,6 +39,7 @@ object Defaults {
   val NumIoThreads = 8
   val BackgroundThreads = 10
   val QueuedMaxRequests = 500
+  val AuthorizerClassName = ""
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -139,6 +140,7 @@ object KafkaConfig {
   val NumIoThreadsProp = "num.io.threads"
   val BackgroundThreadsProp = "background.threads"
   val QueuedMaxRequestsProp = "queued.max.requests"
+  val AuthorizerClassNameProp = "authorizer.class.name"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -243,6 +245,7 @@ object KafkaConfig {
   val NumIoThreadsDoc = "The number of io threads that the server uses for carrying out network requests"
   val BackgroundThreadsDoc = "The number of threads to use for various background processing tasks"
   val QueuedMaxRequestsDoc = "The number of queued requests allowed before blocking the network threads"
+  val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -367,6 +370,7 @@ object KafkaConfig {
       .define(NumIoThreadsProp, INT, Defaults.NumIoThreads, atLeast(1), HIGH, NumIoThreadsDoc)
       .define(BackgroundThreadsProp, INT, Defaults.BackgroundThreads, atLeast(1), HIGH, BackgroundThreadsDoc)
       .define(QueuedMaxRequestsProp, INT, Defaults.QueuedMaxRequests, atLeast(1), HIGH, QueuedMaxRequestsDoc)
+      .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -485,6 +489,7 @@ object KafkaConfig {
       numIoThreads = parsed.get(NumIoThreadsProp).asInstanceOf[Int],
       backgroundThreads = parsed.get(BackgroundThreadsProp).asInstanceOf[Int],
       queuedMaxRequests = parsed.get(QueuedMaxRequestsProp).asInstanceOf[Int],
+      authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -623,6 +628,7 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   val numIoThreads: Int = Defaults.NumIoThreads,
                   val backgroundThreads: Int = Defaults.BackgroundThreads,
                   val queuedMaxRequests: Int = Defaults.QueuedMaxRequests,
+                  val authorizerClassName: String = Defaults.AuthorizerClassName,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -792,6 +798,8 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     props.put(NumIoThreadsProp, numIoThreads.toString)
     props.put(BackgroundThreadsProp, backgroundThreads.toString)
     props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
+    props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
+    props.put(AuthorizerClassNameProp, authorizerClassName.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)

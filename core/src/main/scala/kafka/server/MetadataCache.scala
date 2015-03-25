@@ -31,7 +31,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
  *  A cache for the state (e.g., current leader) of each partition. This cache is updated through
  *  UpdateMetadataRequest from the controller. Every broker maintains the same cache, asynchronously.
  */
-private[server] class MetadataCache(brokerId: Int) extends Logging {
+private[kafka] class MetadataCache(brokerId: Int) extends Logging {
   private val cache: mutable.Map[String, mutable.Map[Int, PartitionStateInfo]] =
     new mutable.HashMap[String, mutable.Map[Int, PartitionStateInfo]]()
   private var aliveBrokers: Map[Int, Broker] = Map()
