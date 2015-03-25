@@ -62,6 +62,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var topicConfigManager: TopicConfigManager = null
 
+  var topicConfigCache: TopicConfigCache = null
+
   var consumerCoordinator: ConsumerCoordinator = null
 
   var kafkaController: KafkaController = null
@@ -162,8 +164,11 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
         Mx4jLoader.maybeLoad()
 
+        /*initialize topic config cache*/
+        topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
+
         /* start topic config manager */
-        topicConfigManager = new TopicConfigManager(zkClient, logManager)
+        topicConfigManager = new TopicConfigManager(zkClient, logManager, topicConfigCache)
         topicConfigManager.startup()
 
         /* tell everyone we are alive */
