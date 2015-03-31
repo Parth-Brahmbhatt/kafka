@@ -17,31 +17,25 @@
 
 package kafka.server
 
+import java.util.Properties
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import kafka.admin.AdminUtils
 import kafka.log.LogConfig
 import kafka.utils.Logging
 import kafka.utils.Utils._
-import java.util.{Properties, Map}
 import org.I0Itec.zkclient.ZkClient
 
-import scala.collection.{Set, mutable}
+import scala.collection.{mutable}
 
 /**
  *  A cache for topic configs that is maintained by each broker, this will not just return the overrides but also defaults.
  */
 class TopicConfigCache(brokerId: Int, val zkClient: ZkClient, defaultConfig: KafkaConfig) extends Logging {
-  private val cache: mutable.Map[String, Properties] = new mutable.HashMap[String, Properties]()
+  private val cache: mutable.Map[String, TopicConfig] = new mutable.HashMap[String, TopicConfig]()
   private val lock = new ReentrantReadWriteLock()
 
   this.logIdent = "[Kafka Topic Config Cache on broker %d] ".format(brokerId)
-
-  private def contains(topic: String) : Boolean = {
-    inReadLock(lock) {
-      return cache.contains(topic)
-    }
-  }
 
   /**
    * Read the topic config from zookeeper and add it to cache.
@@ -49,35 +43,41 @@ class TopicConfigCache(brokerId: Int, val zkClient: ZkClient, defaultConfig: Kaf
    */
   private def populateTopicConfig(topic: String): Unit = {
     inWriteLock(lock) {
-      val topicConfig: Properties = defaultConfig.toProps
-      topicConfig.putAll(AdminUtils.fetchTopicConfig(zkClient, topic))
-      addOrUpdateTopicConfig(topic, topicConfig)
+      val overrideProperties: Properties = AdminUtils.fetchTopicConfig(zkClient, topic)
+      addOrUpdateTopicConfig(topic, overrideProperties)
     }
   }
 
   /**
    * addOrUpdate the topic config cache.
    * @param topic
-   * @param topicConfig
+   * @param overrideProperties
    */
-  def addOrUpdateTopicConfig(topic: String, topicConfig: Properties) {
+  def addOrUpdateTopicConfig(topic: String, overrideProperties: Properties) {
     inWriteLock(lock) {
+      val logConfig: LogConfig = LogConfig.fromProps(defaultConfig.toProps, overrideProperties)
+
+      val topicConfig: TopicConfig = new TopicConfig(logConfig, overrideProperties)
       cache.put(topic, topicConfig)
     }
   }
 
   /**
-   * returns the topic config, the config has overrides and defaults, if the topic config is not present in the cache
-   * it will be read from zookeeper and added to the cache.
+   * Returns the topic config.
    * @param topic
    * @return
    */
-  def getTopicConfig(topic: String): Properties = {
-    if(contains(topic)) {
-        return cache(topic)
+  def getTopicConfig(topic: String): TopicConfig = {
+    inReadLock(lock) {
+      if(cache.contains(topic)) {
+          return cache(topic)
+        }
     }
 
     populateTopicConfig(topic)
+
     return getTopicConfig(topic)
    }
 }
+
+class TopicConfig(val logConfig: LogConfig, val overrideProperties: Properties)
