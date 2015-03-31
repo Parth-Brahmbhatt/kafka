@@ -17,8 +17,7 @@
 
 package kafka.server
 
-import org.apache.kafka.common.requests.JoinGroupResponse
-import org.apache.kafka.common.requests.HeartbeatResponse
+import org.apache.kafka.common.requests.{JoinGroupResponse, JoinGroupRequest, HeartbeatRequest, HeartbeatResponse, ResponseHeader}
 import org.apache.kafka.common.TopicPartition
 
 import kafka.api._
@@ -74,7 +73,19 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     } catch {
       case e: Throwable =>
-        request.requestObj.handleError(e, requestChannel, request)
+        if ( request.requestObj != null)
+          request.requestObj.handleError(e, requestChannel, request)
+        else {
+          val response = request.body.getErrorResponse(e)
+          val respHeader = new ResponseHeader(request.header.correlationId)
+
+          /* If request doesn't have a default error response, we just close the connection.
+             For example, when produce request has acks set to 0 */
+          if (response == null)
+            requestChannel.closeConnection(request.processor, request)
+          else
+            requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(respHeader, response)))
+        }
         error("error when handling request %s".format(request.requestObj), e)
     } finally
       request.apiLocalCompleteTimeMs = SystemTime.milliseconds
@@ -149,12 +160,44 @@ class KafkaApis(val requestChannel: RequestChannel,
       val response = OffsetCommitResponse(commitStatus, offsetCommitRequest.correlationId)
       requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
     }
+
+    // compute the retention time based on the request version:
+    // if it is before v2 or not specified by user, we can use the default retention
+    val offsetRetention =
+      if (offsetCommitRequest.versionId <= 1 ||
+        offsetCommitRequest.retentionMs == org.apache.kafka.common.requests.OffsetCommitRequest.DEFAULT_RETENTION_TIME) {
+        offsetManager.config.offsetsRetentionMs
+      } else {
+        offsetCommitRequest.retentionMs
+      }
+
+    // commit timestamp is always set to now.
+    // "default" expiration timestamp is now + retention (and retention may be overridden if v2)
+    // expire timestamp is computed differently for v1 and v2.
+    //   - If v1 and no explicit commit timestamp is provided we use default expiration timestamp.
+    //   - If v1 and explicit commit timestamp is provided we calculate retention from that explicit commit timestamp
+    //   - If v2 we use the default expiration timestamp
+    val currentTimestamp = SystemTime.milliseconds
+    val defaultExpireTimestamp = offsetRetention + currentTimestamp
+
+    val offsetData = offsetCommitRequest.requestInfo.mapValues(offsetAndMetadata =>
+      offsetAndMetadata.copy(
+        commitTimestamp = currentTimestamp,
+        expireTimestamp = {
+          if (offsetAndMetadata.commitTimestamp == org.apache.kafka.common.requests.OffsetCommitRequest.DEFAULT_TIMESTAMP)
+            defaultExpireTimestamp
+          else
+            offsetRetention + offsetAndMetadata.commitTimestamp
+        }
+      )
+    )
+
     // call offset manager to store offsets
     offsetManager.storeOffsets(
       offsetCommitRequest.groupId,
       offsetCommitRequest.consumerId,
       offsetCommitRequest.groupGenerationId,
-      offsetCommitRequest.requestInfo,
+      offsetData,
       sendResponseCallback)
   }
 
@@ -452,40 +495,41 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleJoinGroupRequest(request: RequestChannel.Request) {
     import JavaConversions._
 
-    val joinGroupRequest = request.requestObj.asInstanceOf[JoinGroupRequestAndHeader]
+    val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
+    val respHeader = new ResponseHeader(request.header.correlationId)
 
     // the callback for sending a join-group response
     def sendResponseCallback(partitions: List[TopicAndPartition], generationId: Int, errorCode: Short) {
       val partitionList = partitions.map(tp => new TopicPartition(tp.topic, tp.partition)).toBuffer
-      val responseBody = new JoinGroupResponse(errorCode, generationId, joinGroupRequest.body.consumerId, partitionList)
-      val response = new JoinGroupResponseAndHeader(joinGroupRequest.correlationId, responseBody)
-      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+      val responseBody = new JoinGroupResponse(errorCode, generationId, joinGroupRequest.consumerId, partitionList)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(respHeader, responseBody)))
     }
 
     // let the coordinator to handle join-group
     coordinator.consumerJoinGroup(
-      joinGroupRequest.body.groupId(),
-      joinGroupRequest.body.consumerId(),
-      joinGroupRequest.body.topics().toList,
-      joinGroupRequest.body.sessionTimeout(),
-      joinGroupRequest.body.strategy(),
+      joinGroupRequest.groupId(),
+      joinGroupRequest.consumerId(),
+      joinGroupRequest.topics().toList,
+      joinGroupRequest.sessionTimeout(),
+      joinGroupRequest.strategy(),
       sendResponseCallback)
   }
 
   def handleHeartbeatRequest(request: RequestChannel.Request) {
-    val heartbeatRequest = request.requestObj.asInstanceOf[HeartbeatRequestAndHeader]
+    val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
+    val respHeader = new ResponseHeader(request.header.correlationId)
 
     // the callback for sending a heartbeat response
     def sendResponseCallback(errorCode: Short) {
-      val response = new HeartbeatResponseAndHeader(heartbeatRequest.correlationId, new HeartbeatResponse(errorCode))
-      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+      val response = new HeartbeatResponse(errorCode)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(respHeader, response)))
     }
 
     // let the coordinator to handle heartbeat
     coordinator.consumerHeartbeat(
-      heartbeatRequest.body.groupId(),
-      heartbeatRequest.body.consumerId(),
-      heartbeatRequest.body.groupGenerationId(),
+      heartbeatRequest.groupId(),
+      heartbeatRequest.consumerId(),
+      heartbeatRequest.groupGenerationId(),
       sendResponseCallback)
   }
 

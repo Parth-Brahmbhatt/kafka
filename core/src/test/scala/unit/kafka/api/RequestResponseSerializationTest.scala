@@ -17,20 +17,21 @@
 
 package kafka.api
 
+import kafka.common._
+import kafka.cluster.Broker
+import kafka.controller.LeaderIsrAndControllerEpoch
+import kafka.message.{Message, ByteBufferMessageSet}
+import kafka.utils.SystemTime
+
+import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.requests._
+
+import scala.Some
+import java.nio.ByteBuffer
+
 import org.junit._
 import org.scalatest.junit.JUnitSuite
 import junit.framework.Assert._
-import java.nio.ByteBuffer
-import kafka.message.{Message, ByteBufferMessageSet}
-import kafka.cluster.Broker
-import kafka.common.{OffsetAndMetadata, ErrorMapping, OffsetMetadataAndError}
-import kafka.utils.SystemTime
-import org.apache.kafka.common.requests._
-import org.apache.kafka.common.protocol.ApiKeys
-import scala.Some
-import kafka.controller.LeaderIsrAndControllerEpoch
-import kafka.common.TopicAndPartition
-import org.apache.kafka.common.TopicPartition
 
 
 object SerializationTestUtils {
@@ -151,10 +152,23 @@ object SerializationTestUtils {
     new TopicMetadataResponse(brokers, Seq(topicmetaData1, topicmetaData2), 1)
   }
 
+  def createTestOffsetCommitRequestV2: OffsetCommitRequest = {
+    new OffsetCommitRequest(
+      groupId = "group 1",
+      retentionMs = SystemTime.milliseconds,
+      requestInfo=collection.immutable.Map(
+      TopicAndPartition(topic1, 0) -> OffsetAndMetadata(42L, "some metadata"),
+      TopicAndPartition(topic1, 1) -> OffsetAndMetadata(100L, OffsetMetadata.NoMetadata)
+    ))
+  }
+
   def createTestOffsetCommitRequestV1: OffsetCommitRequest = {
-    new OffsetCommitRequest("group 1", collection.immutable.Map(
-      TopicAndPartition(topic1, 0) -> OffsetAndMetadata(offset=42L, metadata="some metadata", timestamp=SystemTime.milliseconds),
-      TopicAndPartition(topic1, 1) -> OffsetAndMetadata(offset=100L, metadata=OffsetAndMetadata.NoMetadata, timestamp=SystemTime.milliseconds)
+    new OffsetCommitRequest(
+      versionId = 1,
+      groupId = "group 1",
+      requestInfo = collection.immutable.Map(
+      TopicAndPartition(topic1, 0) -> OffsetAndMetadata(42L, "some metadata", SystemTime.milliseconds),
+      TopicAndPartition(topic1, 1) -> OffsetAndMetadata(100L, OffsetMetadata.NoMetadata, SystemTime.milliseconds)
     ))
   }
 
@@ -163,8 +177,8 @@ object SerializationTestUtils {
       versionId = 0,
       groupId = "group 1",
       requestInfo = collection.immutable.Map(
-        TopicAndPartition(topic1, 0) -> OffsetAndMetadata(offset=42L, metadata="some metadata", timestamp=SystemTime.milliseconds),
-        TopicAndPartition(topic1, 1) -> OffsetAndMetadata(offset=100L, metadata=OffsetAndMetadata.NoMetadata, timestamp=SystemTime.milliseconds)
+        TopicAndPartition(topic1, 0) -> OffsetAndMetadata(42L, "some metadata", SystemTime.milliseconds),
+        TopicAndPartition(topic1, 1) -> OffsetAndMetadata(100L, OffsetMetadata.NoMetadata, SystemTime.milliseconds)
       ))
   }
 
@@ -183,7 +197,7 @@ object SerializationTestUtils {
   def createTestOffsetFetchResponse: OffsetFetchResponse = {
     new OffsetFetchResponse(collection.immutable.Map(
       TopicAndPartition(topic1, 0) -> OffsetMetadataAndError(42L, "some metadata", ErrorMapping.NoError),
-      TopicAndPartition(topic1, 1) -> OffsetMetadataAndError(100L, OffsetAndMetadata.NoMetadata, ErrorMapping.UnknownTopicOrPartitionCode)
+      TopicAndPartition(topic1, 1) -> OffsetMetadataAndError(100L, OffsetMetadata.NoMetadata, ErrorMapping.UnknownTopicOrPartitionCode)
     ))
   }
 
@@ -193,28 +207,6 @@ object SerializationTestUtils {
 
   def createConsumerMetadataResponse: ConsumerMetadataResponse = {
     ConsumerMetadataResponse(Some(brokers.head), ErrorMapping.NoError, 0)
-  }
-
-  def createHeartbeatRequestAndHeader: HeartbeatRequestAndHeader = {
-    val body = new HeartbeatRequest("group1", 1, "consumer1")
-    HeartbeatRequestAndHeader(0.asInstanceOf[Short], 1, "", body)
-  }
-
-  def createHeartbeatResponseAndHeader: HeartbeatResponseAndHeader = {
-    val body = new HeartbeatResponse(0.asInstanceOf[Short])
-    HeartbeatResponseAndHeader(1, body)
-  }
-
-  def createJoinGroupRequestAndHeader: JoinGroupRequestAndHeader = {
-    import scala.collection.JavaConversions._
-    val body = new JoinGroupRequest("group1", 30000, List("topic1"), "consumer1", "strategy1");
-    JoinGroupRequestAndHeader(0.asInstanceOf[Short], 1, "", body)
-  }
-
-  def createJoinGroupResponseAndHeader: JoinGroupResponseAndHeader = {
-    import scala.collection.JavaConversions._
-    val body = new JoinGroupResponse(0.asInstanceOf[Short], 1, "consumer1", List(new TopicPartition("test11", 1)))
-    JoinGroupResponseAndHeader(1, body)
   }
 }
 
@@ -232,16 +224,13 @@ class RequestResponseSerializationTest extends JUnitSuite {
   private val topicMetadataResponse = SerializationTestUtils.createTestTopicMetadataResponse
   private val offsetCommitRequestV0 = SerializationTestUtils.createTestOffsetCommitRequestV0
   private val offsetCommitRequestV1 = SerializationTestUtils.createTestOffsetCommitRequestV1
+  private val offsetCommitRequestV2 = SerializationTestUtils.createTestOffsetCommitRequestV2
   private val offsetCommitResponse = SerializationTestUtils.createTestOffsetCommitResponse
   private val offsetFetchRequest = SerializationTestUtils.createTestOffsetFetchRequest
   private val offsetFetchResponse = SerializationTestUtils.createTestOffsetFetchResponse
   private val consumerMetadataRequest = SerializationTestUtils.createConsumerMetadataRequest
   private val consumerMetadataResponse = SerializationTestUtils.createConsumerMetadataResponse
   private val consumerMetadataResponseNoCoordinator = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, 0)
-  private val heartbeatRequest = SerializationTestUtils.createHeartbeatRequestAndHeader
-  private val heartbeatResponse = SerializationTestUtils.createHeartbeatResponseAndHeader
-  private val joinGroupRequest = SerializationTestUtils.createJoinGroupRequestAndHeader
-  private val joinGroupResponse = SerializationTestUtils.createJoinGroupResponseAndHeader
 
   @Test
   def testSerializationAndDeserialization() {
@@ -250,11 +239,11 @@ class RequestResponseSerializationTest extends JUnitSuite {
       collection.immutable.Seq(leaderAndIsrRequest, leaderAndIsrResponse, stopReplicaRequest,
                                stopReplicaResponse, producerRequest, producerResponse,
                                fetchRequest, offsetRequest, offsetResponse, topicMetadataRequest,
-                               topicMetadataResponse, offsetCommitRequestV0, offsetCommitRequestV1,
+                               topicMetadataResponse,
+                               offsetCommitRequestV0, offsetCommitRequestV1, offsetCommitRequestV2,
                                offsetCommitResponse, offsetFetchRequest, offsetFetchResponse,
                                consumerMetadataRequest, consumerMetadataResponse,
-                               consumerMetadataResponseNoCoordinator, heartbeatRequest,
-                               heartbeatResponse, joinGroupRequest, joinGroupResponse)
+                               consumerMetadataResponseNoCoordinator)
 
     requestsAndResponses.foreach { original =>
       val buffer = ByteBuffer.allocate(original.sizeInBytes)
