@@ -17,9 +17,12 @@
 
 package kafka.admin
 
+import java.nio.file.{Paths, Files}
+
 import joptsimple._
 import java.util.Properties
 import kafka.common.AdminCommandFailedException
+import kafka.security.auth.Acl
 import kafka.utils._
 import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.ZkNodeExistsException
@@ -28,7 +31,7 @@ import scala.collection.JavaConversions._
 import kafka.cluster.Broker
 import kafka.log.LogConfig
 import kafka.consumer.Whitelist
-import kafka.server.OffsetManager
+import kafka.server.{TopicConfig, OffsetManager}
 import org.apache.kafka.common.utils.Utils.formatAddress
 
 
@@ -83,14 +86,20 @@ object TopicCommand {
   def createTopic(zkClient: ZkClient, opts: TopicCommandOptions) {
     val topic = opts.options.valueOf(opts.topicOpt)
     val configs = parseTopicConfigsToBeAdded(opts)
+    val acls: Set[Acl] = parseAcl(opts)
+    val owner: String = if (opts.options.has(opts.ownerOpt))
+                          opts.options.valueOf(opts.ownerOpt).trim
+                        else
+                          System.getProperty("user.name")
+
     if (opts.options.has(opts.replicaAssignmentOpt)) {
       val assignment = parseReplicaAssignment(opts.options.valueOf(opts.replicaAssignmentOpt))
-      AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, assignment, configs)
+      AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, assignment, configs, owner = owner, acls = Some(acls))
     } else {
       CommandLineUtils.checkRequiredArgs(opts.parser, opts.options, opts.partitionsOpt, opts.replicationFactorOpt)
       val partitions = opts.options.valueOf(opts.partitionsOpt).intValue
       val replicas = opts.options.valueOf(opts.replicationFactorOpt).intValue
-      AdminUtils.createTopic(zkClient, topic, partitions, replicas, configs)
+      AdminUtils.createTopic(zkClient, topic, partitions, replicas, configs, acls = acls)
     }
     println("Created topic \"%s\".".format(topic))
   }
@@ -100,17 +109,38 @@ object TopicCommand {
     if (topics.length == 0) {
       println("Topic %s does not exist".format(opts.options.valueOf(opts.topicOpt)))
     }
+
     topics.foreach { topic =>
-      val configs = AdminUtils.fetchTopicConfig(zkClient, topic)
-      if(opts.options.has(opts.configOpt) || opts.options.has(opts.deleteConfigOpt)) {
+      var configs = AdminUtils.fetchTopicConfig(zkClient, topic)
+      var topicConfigs: TopicConfig = TopicConfig.fromProps(configs)
+      //for backward compatibility remove all configs that are not LogConfig properties.
+      configs = LogConfig.getFilteredProps(configs)
+
+      if(opts.options.has(opts.configOpt) || opts.options.has(opts.deleteConfigOpt) || opts.options.has(opts.aclOpt) || opts.options.has(opts.ownerOpt)) {
         val configsToBeAdded = parseTopicConfigsToBeAdded(opts)
         val configsToBeDeleted = parseTopicConfigsToBeDeleted(opts)
+        val acls: Set[Acl] = if (opts.options.has(opts.aclOpt))
+                                parseAcl(opts)
+                              else
+                                topicConfigs.acls
+        val owner: String = if (opts.options.has(opts.ownerOpt))
+                                opts.options.valueOf(opts.ownerOpt).trim
+                            else
+                                topicConfigs.owner
+
         // compile the final set of configs
         configs.putAll(configsToBeAdded)
         configsToBeDeleted.foreach(config => configs.remove(config))
-        AdminUtils.changeTopicConfig(zkClient, topic, configs)
+        AdminUtils.changeTopicConfig(zkClient, topic, configs, owner, Some(acls))
         println("Updated config for topic \"%s\".".format(topic))
       }
+
+      //reload the config from zookeeper as it might have been just updated.
+      configs = AdminUtils.fetchTopicConfig(zkClient, topic)
+      topicConfigs = TopicConfig.fromProps(configs)
+      //for backward compatibility remove all configs that are not LogConfig properties.
+      configs = LogConfig.getFilteredProps(configs)
+
       if(opts.options.has(opts.partitionsOpt)) {
         if (topic == OffsetManager.OffsetsTopicName) {
           throw new IllegalArgumentException("The number of partitions for the offsets topic cannot be changed.")
@@ -119,7 +149,7 @@ object TopicCommand {
           "logic or ordering of the messages will be affected")
         val nPartitions = opts.options.valueOf(opts.partitionsOpt).intValue
         val replicaAssignmentStr = opts.options.valueOf(opts.replicaAssignmentOpt)
-        AdminUtils.addPartitions(zkClient, topic, nPartitions, replicaAssignmentStr, config = configs)
+        AdminUtils.addPartitions(zkClient, topic, nPartitions, replicaAssignmentStr, config = configs, owner = topicConfigs.owner, acls = Some(topicConfigs.acls))
         println("Adding partitions succeeded!")
       }
     }
@@ -167,13 +197,20 @@ object TopicCommand {
           val describeConfigs: Boolean = !reportUnavailablePartitions && !reportUnderReplicatedPartitions
           val describePartitions: Boolean = !reportOverriddenConfigs
           val sortedPartitions = topicPartitionAssignment.toList.sortWith((m1, m2) => m1._1 < m2._1)
+
           if (describeConfigs) {
             val configs = AdminUtils.fetchTopicConfig(zkClient, topic)
+            val topicConfig: TopicConfig = TopicConfig.fromProps(configs)
+            val logConfigs = LogConfig.getFilteredProps(configs)
+
             if (!reportOverriddenConfigs || configs.size() != 0) {
               val numPartitions = topicPartitionAssignment.size
               val replicationFactor = topicPartitionAssignment.head._2.size
-              println("Topic:%s\tPartitionCount:%d\tReplicationFactor:%d\tConfigs:%s"
-                .format(topic, numPartitions, replicationFactor, configs.map(kv => kv._1 + "=" + kv._2).mkString(",")))
+              println("Topic:%s\tOwner:%s\tPartitionCount:%d\tReplicationFactor:%d\tConfigs:%s"
+                .format(topic, topicConfig.owner, numPartitions, replicationFactor,
+                  logConfigs.map(kv => kv._1 + "=" + kv._2).mkString(",")))
+              println("Acls:")
+              topicConfig.acls.foreach(acl => println(acl))
             }
           }
           if (describePartitions) {
@@ -198,7 +235,20 @@ object TopicCommand {
   }
   
   def formatBroker(broker: Broker) = broker.id + " (" + formatAddress(broker.host, broker.port) + ")"
-  
+
+  def parseAcl(opts: TopicCommandOptions): Set[Acl] = {
+    if (opts.options.has(opts.aclOpt)) {
+      val aclJsonFilePath = opts.options.valueOf(opts.aclOpt).trim
+      val source = scala.io.Source.fromFile(aclJsonFilePath)
+      val jsonAcls = source.mkString
+      source.close()
+      //validate acls can be parsed
+      return Acl.fromJson(jsonAcls)
+    }
+
+    return Set[Acl](Acl.allowAllAcl)
+  }
+
   def parseTopicConfigsToBeAdded(opts: TopicCommandOptions): Properties = {
     val configsToBeAdded = opts.options.valuesOf(opts.configOpt).map(_.split("""\s*=\s*"""))
     require(configsToBeAdded.forall(config => config.length == 2),
@@ -286,6 +336,17 @@ object TopicCommand {
     val topicsWithOverridesOpt = parser.accepts("topics-with-overrides",
                                                 "if set when describing topics, only show topics that have overridden configs")
 
+    val aclOpt = parser.accepts("acl", "Path to the acl json file that describes the acls for the topic. This is not additive, i.e. the new acls will overwrite any old acls.")
+      .withRequiredArg()
+      .describedAs("Path to topic acl json file")
+      .ofType(classOf[String])
+
+    //TODO: Should we even allow users to specify someone else as owner? or just default to keytab logged in user or the user executing command if no jaas login has happened.?
+    val ownerOpt = parser.accepts("owner", "User name for the owner of the topic. Default : user running the command.")
+      .withRequiredArg()
+      .describedAs("User name for the owner of the topic.")
+      .ofType(classOf[String])
+
     val options = parser.parse(args : _*)
 
     val allTopicLevelOpts: Set[OptionSpec[_]] = Set(alterOpt, createOpt, describeOpt, listOpt)
@@ -298,6 +359,8 @@ object TopicCommand {
 
       // check invalid args
       CommandLineUtils.checkInvalidArgs(parser, options, configOpt, allTopicLevelOpts -- Set(alterOpt, createOpt))
+      CommandLineUtils.checkInvalidArgs(parser, options, aclOpt, allTopicLevelOpts -- Set(alterOpt, createOpt))
+      CommandLineUtils.checkInvalidArgs(parser, options, ownerOpt, allTopicLevelOpts -- Set(alterOpt, createOpt))
       CommandLineUtils.checkInvalidArgs(parser, options, deleteConfigOpt, allTopicLevelOpts -- Set(alterOpt))
       CommandLineUtils.checkInvalidArgs(parser, options, partitionsOpt, allTopicLevelOpts -- Set(alterOpt, createOpt))
       CommandLineUtils.checkInvalidArgs(parser, options, replicationFactorOpt, allTopicLevelOpts -- Set(createOpt))

@@ -42,20 +42,16 @@ class DynamicConfigChangeTest extends JUnit3Suite with KafkaServerTestHarness {
 
       //check config cache gets populated for a new topic.
       val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
-      assertNotNull(config)
-      assertFalse(config.isEmpty)
-      assertEquals(oldVal, LogConfig.fromProps(config).flushInterval)
+      assertEquals(oldVal, config.logConfig.flushInterval)
     }
 
-    AdminUtils.changeTopicConfig(zkClient, tp.topic, LogConfig(flushInterval = newVal).toProps)
+    AdminUtils.changeTopicConfig(zkClient, tp.topic, LogConfig(flushInterval = newVal).toProps, null, null)
     TestUtils.retry(10000) {
       assertEquals(newVal, this.servers(0).logManager.getLog(tp).get.config.flushInterval)
 
       //check config cache was updated with the new values.
       val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
-      assertNotNull(config)
-      assertFalse(config.isEmpty)
-      assertEquals(newVal, LogConfig.fromProps(config).flushInterval)
+      assertEquals(newVal, config.logConfig.flushInterval)
     }
   }
 
@@ -63,7 +59,7 @@ class DynamicConfigChangeTest extends JUnit3Suite with KafkaServerTestHarness {
   def testConfigChangeOnNonExistingTopic() {
     val topic = TestUtils.tempTopic
     try {
-      AdminUtils.changeTopicConfig(zkClient, topic, LogConfig(flushInterval = 10000).toProps)
+      AdminUtils.changeTopicConfig(zkClient, topic, LogConfig(flushInterval = 10000).toProps, null, null)
       fail("Should fail with AdminOperationException for topic doesn't exist")
     } catch {
       case e: AdminOperationException => // expected

@@ -18,7 +18,7 @@
 package kafka.security.auth
 
 import kafka.network.RequestChannel.Session
-import kafka.server.{MetadataCache, KafkaConfig}
+import kafka.server.{TopicConfigCache, MetadataCache, KafkaConfig}
 
 /**
  * Top level interface that all plugable authorizer must implement. Kafka server will read "authorizer.class" config
@@ -33,7 +33,7 @@ trait Authorizer {
   /**
    * Guaranteed to be called before any authorize call is made.
    */
-  def initialize(kafkaConfig: KafkaConfig, metadataCache: MetadataCache): Unit
+  def initialize(kafkaConfig: KafkaConfig, topicConfigCache: TopicConfigCache): Unit
   
   /**
    * @param session The session being authenticated.

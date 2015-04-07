@@ -78,7 +78,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
 
   def testTopicDoesNotExist {
     try {
-      AdminUtils.addPartitions(zkClient, "Blah", 1)
+      AdminUtils.addPartitions(zkClient, "Blah", 1, owner = null ,acls = None)
       fail("Topic should not exist")
     } catch {
       case e: AdminOperationException => //this is good
@@ -88,7 +88,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
 
   def testWrongReplicaCount {
     try {
-      AdminUtils.addPartitions(zkClient, topic1, 2, "0:1,0:1:2")
+      AdminUtils.addPartitions(zkClient, topic1, 2, "0:1,0:1:2", owner = null ,acls = None)
       fail("Add partitions should fail")
     } catch {
       case e: AdminOperationException => //this is good
@@ -97,7 +97,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
   }
 
   def testIncrementPartitions {
-    AdminUtils.addPartitions(zkClient, topic1, 3)
+    AdminUtils.addPartitions(zkClient, topic1, 3, owner = null ,acls = None)
     // wait until leader is elected
     var leader1 = waitUntilLeaderIsElectedOrChanged(zkClient, topic1, 1)
     var leader2 = waitUntilLeaderIsElectedOrChanged(zkClient, topic1, 2)
@@ -122,7 +122,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
   }
 
   def testManualAssignmentOfReplicas {
-    AdminUtils.addPartitions(zkClient, topic2, 3, "1:2,0:1,2:3")
+    AdminUtils.addPartitions(zkClient, topic2, 3, "1:2,0:1,2:3", owner = null ,acls = None)
     // wait until leader is elected
     var leader1 = waitUntilLeaderIsElectedOrChanged(zkClient, topic2, 1)
     var leader2 = waitUntilLeaderIsElectedOrChanged(zkClient, topic2, 2)
@@ -148,7 +148,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
   }
 
   def testReplicaPlacement {
-    AdminUtils.addPartitions(zkClient, topic3, 7)
+    AdminUtils.addPartitions(zkClient, topic3, 7, owner = null ,acls = None)
 
     // read metadata from a broker and verify the new topic partitions exist
     TestUtils.waitUntilMetadataIsPropagated(servers, topic3, 1)

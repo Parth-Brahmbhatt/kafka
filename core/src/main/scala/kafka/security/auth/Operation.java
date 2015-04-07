@@ -26,6 +26,6 @@ public enum Operation {
    DELETE,
    EDIT,
    DESCRIBE,
-   REPLICATE,
+   SEND_CONTROL_MSG,
    ALL
 }

@@ -1,73 +1,82 @@
 package kafka.security.auth
 
-import java.nio.ByteBuffer
+import kafka.utils.Json
 
-import kafka.api.ApiUtils._
-
-import scala.collection.immutable.HashSet
+import scala.collection.{mutable}
 
 object Acl {
-
-  val wildCardPrincipal: String = "Anonymous"
+  val wildCardPrincipal: String = "*"
   val wildCardHost: String = "*"
-  val allowAllAcl = new Acl(wildCardPrincipal, PermissionType.ALLOW, Set[String](wildCardPrincipal), Set[Operation](Operation.ALL))
+  val allowAllAcl = new Acl(wildCardPrincipal, PermissionType.ALLOW, Set[String](wildCardHost), Set[Operation](Operation.ALL))
+  val PRINCIPAL_KEY = "principal"
+  val PERMISSION_TYPE_KEY = "permissionType"
+  val OPERATIONS_KEY = "operations"
+  val HOSTS_KEY = "hosts"
+  val VERSION_KEY = "version"
+  val CURRENT_VERSION = 1
+  val ACLS_KEY = "acls"
 
-  def readFrom(buffer: ByteBuffer): Acl = {
-    val principal= readShortString(buffer)
-    val permissionType = PermissionType.valueOf(readShortString(buffer))
-
-    val numHosts = readShortInRange(buffer, "number of hosts",  (0, Short.MaxValue))
-    var hosts = HashSet[String]()
-    for(i <- 0 until numHosts) {
-      hosts += readShortString(buffer)
+  def fromJson(aclJson: String): Set[Acl] = {
+    if(aclJson == null || aclJson.isEmpty) {
+      return collection.immutable.Set.empty[Acl]
     }
-
-    val numOfOperations = readShortInRange(buffer, "number of operations",  (0, Short.MaxValue))
-    var operations = HashSet[Operation]()
-    for(i <- 0 until numOfOperations) {
-      operations += Operation.valueOf(readShortString(buffer))
+    var acls: mutable.HashSet[Acl] = new mutable.HashSet[Acl]()
+    Json.parseFull(aclJson) match {
+      case Some(m) =>
+        val aclMap = m.asInstanceOf[Map[String, Any]]
+        //the acl json version.
+        require(aclMap.get(VERSION_KEY).get == CURRENT_VERSION)
+        val aclSet: List[Map[String, Any]] = aclMap.get(ACLS_KEY).get.asInstanceOf[List[Map[String, Any]]]
+        aclSet.foreach(item => {
+          val principal: String = item(PRINCIPAL_KEY).asInstanceOf[String]
+          val permissionType: PermissionType = PermissionType.valueOf(item(PERMISSION_TYPE_KEY).asInstanceOf[String])
+          val operations: List[Operation] = item(OPERATIONS_KEY).asInstanceOf[List[String]].map(operation => Operation.valueOf(operation))
+          val hosts: List[String] = item(HOSTS_KEY).asInstanceOf[List[String]]
+          acls += new Acl(principal, permissionType, hosts.toSet, operations.toSet)
+        })
+      case None =>
     }
+    return acls.toSet
+  }
 
-    return new Acl(principal, permissionType, hosts, operations)
+  def toJsonCompatibleMap(acls: Set[Acl]): Map[String,Any] = {
+    acls match {
+      case aclSet: Set[Acl] => Map(Acl.VERSION_KEY -> Acl.CURRENT_VERSION, Acl.ACLS_KEY -> aclSet.map(acl => acl.toMap).toList)
+      case _ => null
+    }
   }
 }
 
 /**
  * An instance of this class will represent an acl that can express following statement.
  * <pre>
- * Principal P has permissionType PT on Operations READ,WRITE from hosts H1,H2.
+ * Principal P has permissionType PT on Operations O1,O2 from hosts H1,H2.
  * </pre>
- * @param principal A value of "Anonymous" indicates all users.
+ * @param principal A value of * indicates all users.
  * @param permissionType
  * @param hosts A value of * indicates all hosts.
  * @param operations A value of ALL indicates all operations.
  */
-case class Acl(principal: String, permissionType: PermissionType, hosts: Set[String], operations: Set[Operation]) {
+case class Acl(val principal: String,val permissionType: PermissionType,val hosts: Set[String],val operations: Set[Operation]) {
 
-  def shortOperationLength(op: Operation) : Int = {
-    shortStringLength(op.name())
+  /**
+   * TODO: Ideally we would have a symmetric toJson method but our current json library fails to decode double parsed json strings so
+   * convert to map which then gets converted to json.
+   * Convert an acl instance to a map
+   * @return Map representation of the Acl.
+   */
+  def toMap() : Map[String, Any] = {
+    val map: mutable.HashMap[String, Any] = new mutable.HashMap[String, Any]()
+    map.put(Acl.PRINCIPAL_KEY, principal)
+    map.put(Acl.PERMISSION_TYPE_KEY, permissionType.name())
+    map.put(Acl.OPERATIONS_KEY, operations.map(operation => operation.name()))
+    map.put(Acl.HOSTS_KEY, hosts)
+
+    map.toMap
   }
 
-  def sizeInBytes: Int = {
-    shortStringLength(principal) +
-    shortStringLength(permissionType.name()) +
-    2 + hosts.map(shortStringLength(_)).sum +
-    2 + operations.map(shortOperationLength(_)).sum
-  }
-
-  override def toString: String = "principal:" + principal + ",hosts:" + hosts+ ",operations:" + operations
-
-  def writeTo(buffer: ByteBuffer) {
-    writeShortString(buffer, principal)
-    writeShortString(buffer, permissionType.name())
-
-    //hosts
-    buffer.putShort(hosts.size.toShort)
-    hosts.foreach(h => writeShortString(buffer, h))
-
-    //operations
-    buffer.putShort(operations.size.toShort)
-    operations.foreach(o => writeShortString(buffer, o.name()))
+  override def toString() : String = {
+    return "%s has %s permission for operations: %s from hosts: %s".format(principal, permissionType.name(), operations.mkString(","), hosts.mkString(","))
   }
 }
 

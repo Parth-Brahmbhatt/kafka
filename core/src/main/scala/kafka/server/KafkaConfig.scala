@@ -39,7 +39,11 @@ object Defaults {
   val NumIoThreads = 8
   val BackgroundThreads = 10
   val QueuedMaxRequests = 500
+
+  /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
+  val SuperUser = ""
+  val ClusterAclJsonFilePath = ""
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -141,7 +145,12 @@ object KafkaConfig {
   val NumIoThreadsProp = "num.io.threads"
   val BackgroundThreadsProp = "background.threads"
   val QueuedMaxRequestsProp = "queued.max.requests"
+
+  /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
+  val SuperUserProp = "super.users"
+  val ClusterAclJsonFilePathProp = "cluster.acl.json.file.path"
+
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -247,7 +256,13 @@ object KafkaConfig {
   val NumIoThreadsDoc = "The number of io threads that the server uses for carrying out network requests"
   val BackgroundThreadsDoc = "The number of threads to use for various background processing tasks"
   val QueuedMaxRequestsDoc = "The number of queued requests allowed before blocking the network threads"
+
+  /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
+  val SuperUserDoc = "Comman seperated list of users that will have super user access to the cluster and all the topics."
+  val ClusterAclJsonFilePathDoc = "Path to the json file describing cluster's acl. These acls are used to determine which users" +
+    "have access to cluster actions like CREATE topic."
+
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -373,7 +388,11 @@ object KafkaConfig {
       .define(NumIoThreadsProp, INT, Defaults.NumIoThreads, atLeast(1), HIGH, NumIoThreadsDoc)
       .define(BackgroundThreadsProp, INT, Defaults.BackgroundThreads, atLeast(1), HIGH, BackgroundThreadsDoc)
       .define(QueuedMaxRequestsProp, INT, Defaults.QueuedMaxRequests, atLeast(1), HIGH, QueuedMaxRequestsDoc)
+
+       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
+      .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
+      .define(ClusterAclJsonFilePathProp, STRING, Defaults.ClusterAclJsonFilePath, LOW, ClusterAclJsonFilePathDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -493,7 +512,11 @@ object KafkaConfig {
       numIoThreads = parsed.get(NumIoThreadsProp).asInstanceOf[Int],
       backgroundThreads = parsed.get(BackgroundThreadsProp).asInstanceOf[Int],
       queuedMaxRequests = parsed.get(QueuedMaxRequestsProp).asInstanceOf[Int],
+
+      /************* Authorizer Configuration ***********/
       authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
+      superUser =  parsed.get(SuperUserProp).asInstanceOf[String],
+      clusterAclJsonFilePath =  parsed.get(ClusterAclJsonFilePathProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -633,7 +656,11 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   val numIoThreads: Int = Defaults.NumIoThreads,
                   val backgroundThreads: Int = Defaults.BackgroundThreads,
                   val queuedMaxRequests: Int = Defaults.QueuedMaxRequests,
+
+                  /************* Authorizer Configuration ***********/
                   val authorizerClassName: String = Defaults.AuthorizerClassName,
+                  val superUser: String = Defaults.SuperUser,
+                  val clusterAclJsonFilePath: String = Defaults.ClusterAclJsonFilePath,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -805,7 +832,11 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     props.put(BackgroundThreadsProp, backgroundThreads.toString)
     props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
     props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
+
+    /************* Authorizer Configuration ***********/
     props.put(AuthorizerClassNameProp, authorizerClassName.toString)
+    props.put(SuperUserProp, superUser.toString)
+    props.put(ClusterAclJsonFilePathProp, clusterAclJsonFilePath.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)

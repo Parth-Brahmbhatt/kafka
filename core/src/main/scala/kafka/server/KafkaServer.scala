@@ -147,13 +147,16 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         consumerCoordinator = new ConsumerCoordinator(config, zkClient)
         consumerCoordinator.startup()
 
+        /*initialize topic config cache*/
+        topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
+
         /* Get the authorizer */
         val authorizer: Authorizer = if (config.authorizerClassName != null && !config.authorizerClassName.isEmpty)
-          Utils.createObject(config.authorizerClassName, classOf[Authorizer])
+          Utils.createObject(config.authorizerClassName)
         else
           null
         if(authorizer != null) {
-          authorizer.initialize(config, metadataCache)
+          authorizer.initialize(config, topicConfigCache)
         }
 
         /* start processing requests */
@@ -163,9 +166,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         brokerState.newState(RunningAsBroker)
 
         Mx4jLoader.maybeLoad()
-
-        /*initialize topic config cache*/
-        topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
 
         /* start topic config manager */
         topicConfigManager = new TopicConfigManager(zkClient, logManager, topicConfigCache)

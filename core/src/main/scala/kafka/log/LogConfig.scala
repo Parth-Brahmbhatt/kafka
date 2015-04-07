@@ -245,4 +245,21 @@ object LogConfig {
     configDef.parse(props)
   }
 
+  /**
+   * Removes any properties that are not defined in configDef
+   * @param props
+   * @return
+   */
+  def getFilteredProps(props: Properties): Properties = {
+    val filteredProps: Properties = new Properties()
+    val names = configDef.names()
+
+    for((k,v) <- props) {
+      if(names.contains(k)) {
+        filteredProps.put(k, v)
+      }
+    }
+    filteredProps
+  }
+
 }

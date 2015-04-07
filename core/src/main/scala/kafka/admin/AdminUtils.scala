@@ -21,12 +21,12 @@ import kafka.common._
 import kafka.cluster.Broker
 import kafka.log.LogConfig
 import kafka.security.auth.Acl
+import kafka.server.TopicConfig
 import kafka.utils._
 import kafka.api.{TopicMetadata, PartitionMetadata}
 
 import java.util.Random
 import java.util.Properties
-import scala.Some
 import scala.Predef._
 import scala.collection._
 import mutable.ListBuffer
@@ -109,7 +109,9 @@ object AdminUtils extends Logging {
                     numPartitions: Int = 1,
                     replicaAssignmentStr: String = "",
                     checkBrokerAvailable: Boolean = true,
-                    config: Properties = new Properties) {
+                    config: Properties = new Properties,
+                    owner: String,
+                    acls: Option[Set[Acl]]) {
     val existingPartitionsReplicaList = ZkUtils.getReplicaAssignmentForTopics(zkClient, List(topic))
     if (existingPartitionsReplicaList.size == 0)
       throw new AdminOperationException("The topic %s does not exist".format(topic))
@@ -136,7 +138,7 @@ object AdminUtils extends Logging {
     val partitionReplicaList = existingPartitionsReplicaList.map(p => p._1.partition -> p._2)
     // add the new list
     partitionReplicaList ++= newPartitionReplicaList
-    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, partitionReplicaList, config, true)
+    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, partitionReplicaList, config, true, owner, acls)
   }
 
   def getManualReplicaAssignment(replicaAssignmentList: String, availableBrokerList: Set[Int], startPartitionId: Int, checkBrokerAvailable: Boolean = true): Map[Int, List[Int]] = {
@@ -227,11 +229,11 @@ object AdminUtils extends Logging {
                   partitions: Int, 
                   replicationFactor: Int, 
                   topicConfig: Properties = new Properties,
-                  owner: String = Acl.wildCardPrincipal,
-                  acls: Acl = Acl.allowAllAcl ) {
+                  owner: String = System.getProperty("user.name"),
+                  acls: Set[Acl] = Set[Acl](Acl.allowAllAcl)) {
     val brokerList = ZkUtils.getSortedBrokerList(zkClient)
     val replicaAssignment = AdminUtils.assignReplicasToBrokers(brokerList, partitions, replicationFactor)
-    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, replicaAssignment, topicConfig)
+    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, replicaAssignment, topicConfig, update = false, owner, Some(acls))
   }
                   
   def createOrUpdateTopicPartitionAssignmentPathInZK(zkClient: ZkClient,
@@ -239,20 +241,21 @@ object AdminUtils extends Logging {
                                                      partitionReplicaAssignment: Map[Int, Seq[Int]],
                                                      config: Properties = new Properties,
                                                      update: Boolean = false,
-                                                     owner: String = Acl.wildCardPrincipal,
-                                                     acls: Acl = Acl.allowAllAcl) {
+                                                     owner: String,
+                                                     acls: Option[Set[Acl]]) {
     // validate arguments
-    Topic.validate(topic) //TODO, we should probably ensure owner can not be changed when its an update request.
+    Topic.validate(topic)
     LogConfig.validate(config)
+
     require(partitionReplicaAssignment.values.map(_.size).toSet.size == 1, "All partitions should have the same number of replicas.")
 
     val topicPath = ZkUtils.getTopicPath(topic)
     if(!update && zkClient.exists(topicPath))
       throw new TopicExistsException("Topic \"%s\" already exists.".format(topic))
     partitionReplicaAssignment.values.foreach(reps => require(reps.size == reps.toSet.size, "Duplicate replica assignment found: "  + partitionReplicaAssignment))
-    
+
     // write out the config if there is any, this isn't transactional with the partition assignments
-    writeTopicConfig(zkClient, topic, config)
+    writeTopicConfig(zkClient, topic, config, owner, acls)
     
     // create the partition assignment
     writeTopicPartitionAssignment(zkClient, topic, partitionReplicaAssignment, update)
@@ -285,7 +288,7 @@ object AdminUtils extends Logging {
    *                 existing configs need to be deleted, it should be done prior to invoking this API
    *
    */
-  def changeTopicConfig(zkClient: ZkClient, topic: String, configs: Properties) {
+  def changeTopicConfig(zkClient: ZkClient, topic: String, configs: Properties, owner: String,  acls: Option[Set[Acl]]) {
     if(!topicExists(zkClient, topic))
       throw new AdminOperationException("Topic \"%s\" does not exist.".format(topic))
 
@@ -293,7 +296,7 @@ object AdminUtils extends Logging {
     LogConfig.validate(configs)
 
     // write the new config--may not exist if there were previously no overrides
-    writeTopicConfig(zkClient, topic, configs)
+    writeTopicConfig(zkClient, topic, configs, owner, acls)
     
     // create the change notification
     zkClient.createPersistentSequential(ZkUtils.TopicConfigChangesPath + "/" + TopicConfigChangeZnodePrefix, Json.encode(topic))
@@ -301,13 +304,26 @@ object AdminUtils extends Logging {
   
   /**
    * Write out the topic config to zk, if there is any
+   * TODO may we should just accept a TopicConfig instance here and call toProps on that, however LogConfig in topicConfig also has defaults
+   * we just want to store the overrides not the defaults for LogConfig.
    */
-  private def writeTopicConfig(zkClient: ZkClient, topic: String, config: Properties) {
+  private def writeTopicConfig(zkClient: ZkClient, topic: String, config: Properties, owner: String, acls: Option[Set[Acl]]) {
     val configMap: mutable.Map[String, String] = {
       import JavaConversions._
       config
     }
-    val map = Map("version" -> 1, "config" -> configMap)
+
+    val aclMap: Map[String, Any] = acls match {
+      case Some(aclSet: Set[Acl]) => Acl.toJsonCompatibleMap(aclSet.toSet)
+      case _ => null
+    }
+
+    //TODO: owner should first be read from jaas login module, if no logged in user is found only then we should default to user.name.
+    val map = Map(TopicConfig.versionKey -> 2,
+      TopicConfig.configKey -> configMap,
+      TopicConfig.ownerKey -> owner,
+      TopicConfig.aclKey -> aclMap)
+
     ZkUtils.updatePersistentPath(zkClient, ZkUtils.getTopicConfigPath(topic), Json.encode(map))
   }
   
@@ -316,21 +332,48 @@ object AdminUtils extends Logging {
    */
   def fetchTopicConfig(zkClient: ZkClient, topic: String): Properties = {
     val str: String = zkClient.readData(ZkUtils.getTopicConfigPath(topic), true)
-    val props = new Properties()
+    var props = new Properties()
     if(str != null) {
       Json.parseFull(str) match {
         case None => // there are no config overrides
         case Some(map: Map[String, _]) => 
-          require(map("version") == 1)
-          map.get("config") match {
-            case Some(config: Map[String, String]) =>
-              for((k,v) <- config)
-                props.setProperty(k, v)
-            case _ => throw new IllegalArgumentException("Invalid topic config: " + str)
-          }
-
+          if (map(TopicConfig.versionKey) == 1)
+            props = toTopicConfigV1(map, str)
+          else
+            props = toTopicConfigV2(map, str)
         case o => throw new IllegalArgumentException("Unexpected value in config: "  + str)
       }
+    }
+    props
+  }
+
+  def toTopicConfigV1(map: Map[String, Any], config: String): Properties = {
+    val props = new Properties()
+    map.get(TopicConfig.configKey) match {
+      case Some(config: Map[String, String]) =>
+        for((k,v) <- config)
+          props.setProperty(k, v)
+      case _ => throw new IllegalArgumentException("Invalid topic config: " + config)
+    }
+    props
+  }
+
+  def toTopicConfigV2(map: Map[String, Any], config: String): Properties = {
+    val props = toTopicConfigV1(map, config)
+
+    props.setProperty(TopicConfig.versionKey, "2")
+    map.get(TopicConfig.aclKey) match {
+      case Some(acls: Map[String, Any]) =>
+        props.setProperty(TopicConfig.aclKey, Json.encode(acls))
+      case Some(null) =>
+      case _ => throw new IllegalArgumentException("Invalid topic config: " + config)
+    }
+
+    map.get(TopicConfig.ownerKey) match {
+      case Some(owner: String) =>
+        props.setProperty(TopicConfig.ownerKey, owner)
+      case Some(null) =>
+      case _ => throw new IllegalArgumentException("Invalid topic config: " + config)
     }
     props
   }

@@ -1,0 +1,1 @@
+{"version": 1, "acls": [{"hosts":["host1","host2"],"permissionType":"DENY","operations":["READ","WRITE"],"principal":"alice"},{"hosts":["*"],"permissionType":"ALLOW","operations":["READ","WRITE"],"principal":"bob"},{"hosts":["host1","host2"],"permissionType":"DENY","operations":["READ"],"principal":"bob"}]}

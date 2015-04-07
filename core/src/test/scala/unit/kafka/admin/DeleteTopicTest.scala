@@ -102,7 +102,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val allServers = brokerConfigs.map(b => TestUtils.createServer(KafkaConfig.fromProps(b)))
     val servers = allServers.filter(s => expectedReplicaAssignment(0).contains(s.config.brokerId))
     // create the topic
-    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment)
+    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment, owner = null ,acls = None)
     // wait until replica log is created on every broker
     TestUtils.waitUntilTrue(() => servers.foldLeft(true)((res, server) =>
       res && server.getLogManager().getLog(topicAndPartition).isDefined),
@@ -147,7 +147,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     val newPartition = TopicAndPartition(topic, 1)
     follower.shutdown()
     // add partitions to topic
-    AdminUtils.addPartitions(zkClient, topic, 2, "0:1:2,0:1:2", false)
+    AdminUtils.addPartitions(zkClient, topic, 2, "0:1:2,0:1:2", false, owner = null ,acls = None)
     // start topic deletion
     AdminUtils.deleteTopic(zkClient, topic)
     follower.startup()
@@ -169,7 +169,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     AdminUtils.deleteTopic(zkClient, topic)
     // add partitions to topic
     val newPartition = TopicAndPartition(topic, 1)
-    AdminUtils.addPartitions(zkClient, topic, 2, "0:1:2,0:1:2")
+    AdminUtils.addPartitions(zkClient, topic, 2, "0:1:2,0:1:2", owner = null ,acls = None)
     TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     // verify that new partition doesn't exist on any broker either
     assertTrue("Replica logs not deleted after delete topic is complete",
@@ -187,7 +187,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     AdminUtils.deleteTopic(zkClient, topic)
     TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
     // re-create topic on same replicas
-    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment)
+    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment, owner = null ,acls = None)
     // wait until leader is elected
     val leaderIdOpt = TestUtils.waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 1000)
     assertTrue("New leader should be elected after re-creating topic test", leaderIdOpt.isDefined)
@@ -265,7 +265,7 @@ class DeleteTopicTest extends JUnit3Suite with ZooKeeperTestHarness {
     // create brokers
     val servers = brokerConfigs.map(b => TestUtils.createServer(KafkaConfig.fromProps(b)))
     // create the topic
-    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment)
+    AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, expectedReplicaAssignment, owner = null ,acls = None)
     // wait until replica log is created on every broker
     TestUtils.waitUntilTrue(() => servers.foldLeft(true)((res, server) =>
       res && server.getLogManager().getLog(topicAndPartition).isDefined),
