@@ -179,7 +179,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
             (protocol, endpoint)
         }
 
-        /* tell everyone we are alive */
         kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
         kafkaHealthcheck.startup()
 

@@ -22,7 +22,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import kafka.admin.AdminUtils
 import kafka.utils.Logging
-import kafka.utils.Utils._
+import kafka.utils.CoreUtils._
 import org.I0Itec.zkclient.ZkClient
 
 import scala.collection.mutable

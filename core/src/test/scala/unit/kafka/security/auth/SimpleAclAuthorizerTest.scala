@@ -8,13 +8,14 @@ import kafka.network.RequestChannel.Session
 import kafka.security.auth._
 import kafka.server.{KafkaConfig, TopicConfig, TopicConfigCache}
 import kafka.utils.TestUtils
+import kafka.zk.ZooKeeperTestHarness
 import org.easymock.EasyMock
 import org.junit.Test
 import org.scalatest.junit.JUnit3Suite
 import org.junit.Assert._
 
 
-class SimpleAclAuthorizerTest extends JUnit3Suite {
+class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
 
   val clusterAclCache: ClusterAclCache = EasyMock.createMock(classOf[ClusterAclCache])
   val topicConfigCache: TopicConfigCache = EasyMock.createMock(classOf[TopicConfigCache])
@@ -28,7 +29,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite {
   override def setUp() {
     super.setUp()
 
-    val props = TestUtils.createBrokerConfig(0, 8181)
+    val props = TestUtils.createBrokerConfig(0, zkConnect)
     props.put(KafkaConfig.ClusterAclJsonFilePathProp, "")
     props.put(KafkaConfig.SuperUserProp, superUsers)
 

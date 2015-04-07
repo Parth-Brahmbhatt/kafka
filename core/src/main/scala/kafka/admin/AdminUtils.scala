@@ -232,6 +232,9 @@ object AdminUtils extends Logging {
                   partitions: Int, 
                   replicationFactor: Int, 
                   topicConfig: Properties = new Properties,
+                  //TODO: owner should first be read from jaas login module,
+                  // if no logged in user is found only then we should default to user.name.
+                  // we could avoid storing any acls which currently holds the same meaning as allow all.
                   owner: String = System.getProperty("user.name"),
                   acls: Set[Acl] = Set[Acl](Acl.allowAllAcl)) {
     val brokerList = ZkUtils.getSortedBrokerList(zkClient)
@@ -259,7 +262,7 @@ object AdminUtils extends Logging {
 
     // write out the config if there is any, this isn't transactional with the partition assignments
     writeTopicConfig(zkClient, topic, config, owner, acls)
-    
+
     // create the partition assignment
     writeTopicPartitionAssignment(zkClient, topic, partitionReplicaAssignment, update)
   }
@@ -307,8 +310,6 @@ object AdminUtils extends Logging {
   
   /**
    * Write out the topic config to zk, if there is any
-   * TODO may we should just accept a TopicConfig instance here and call toProps on that, however LogConfig in topicConfig also has defaults
-   * we just want to store the overrides not the defaults for LogConfig.
    */
   private def writeTopicConfig(zkClient: ZkClient, topic: String, config: Properties, owner: String, acls: Option[Set[Acl]]) {
     val configMap: mutable.Map[String, String] = {
@@ -321,7 +322,6 @@ object AdminUtils extends Logging {
       case _ => null
     }
 
-    //TODO: owner should first be read from jaas login module, if no logged in user is found only then we should default to user.name.
     val map = Map(TopicConfig.versionKey -> 2,
       TopicConfig.configKey -> configMap,
       TopicConfig.ownerKey -> owner,
@@ -367,6 +367,7 @@ object AdminUtils extends Logging {
     props.setProperty(TopicConfig.versionKey, "2")
     map.get(TopicConfig.aclKey) match {
       case Some(acls: Map[String, Any]) =>
+        //everything must be string so encoding back to Json string.
         props.setProperty(TopicConfig.aclKey, Json.encode(acls))
       case Some(null) =>
       case _ => throw new IllegalArgumentException("Invalid topic config: " + config)

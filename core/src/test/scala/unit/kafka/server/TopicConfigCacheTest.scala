@@ -27,7 +27,7 @@ import org.scalatest.junit.JUnit3Suite
 
 class TopicConfigCacheTest extends JUnit3Suite with KafkaServerTestHarness {
 
-  override val configs = List(KafkaConfig.fromProps(TestUtils.createBrokerConfig(0, TestUtils.choosePort)))
+  def generateConfigs() = TestUtils.createBrokerConfigs(1, zkConnect).map(KafkaConfig.fromProps(_))
 
   def testConfigCache {
     var config: TopicConfig = this.servers(0).topicConfigCache.getTopicConfig("not-existing-topic")

@@ -25,10 +25,9 @@ import kafka.log._
 import kafka.zk.ZooKeeperTestHarness
 import kafka.utils.{Logging, ZkUtils, TestUtils}
 import kafka.common.{TopicExistsException, TopicAndPartition}
-import kafka.server.{KafkaServer, KafkaConfig}
+import kafka.server.{TopicConfig, KafkaServer, KafkaConfig}
 import java.io.File
 import TestUtils._
-
 
 class AdminTest extends JUnit3Suite with ZooKeeperTestHarness with Logging {
 
@@ -399,6 +398,29 @@ class AdminTest extends JUnit3Suite with ZooKeeperTestHarness with Logging {
       server.shutdown()
       server.config.logDirs.map(CoreUtils.rm(_))
     }
+  }
+
+  /**
+   * Test we can support both V1 and V2 configs.
+   */
+  @Test
+  def testTopicConfigV1isSupported() {
+    val topic: String = "test-topic"
+    val server = TestUtils.createServer(KafkaConfig.fromProps(TestUtils.createBrokerConfig(0, zkConnect)))
+
+
+    //Write and read a V1 format config.
+    val props: Properties = new Properties()
+    props.put("test", "test")
+
+    val configMap: scala.collection.mutable.Map[String, String]  = {
+      import scala.collection.JavaConversions._
+      props
+    }
+
+    val map: Map[String, Any]=Map[String, Any] (TopicConfig.versionKey -> 1, TopicConfig.configKey -> configMap)
+    ZkUtils.updatePersistentPath(server.zkClient, ZkUtils.getTopicConfigPath(topic), Json.encode(map))
+    assertEquals(props, AdminUtils.fetchTopicConfig(server.zkClient, topic))
   }
 
 }
