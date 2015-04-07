@@ -22,9 +22,10 @@ import kafka.utils._
 import kafka.consumer._
 import kafka.client.ClientUtils
 import kafka.api.{OffsetRequest, FetchRequestBuilder, Request}
-import kafka.cluster.Broker
+import kafka.cluster.BrokerEndPoint
 import scala.collection.JavaConversions._
 import kafka.common.TopicAndPartition
+import org.apache.kafka.common.utils.Utils
 
 /**
  * Command line program to dump out messages to standard out using the simple consumer
@@ -142,8 +143,8 @@ object SimpleConsumerShell extends Logging {
     }
 
     // validating replica id and initializing target broker
-    var fetchTargetBroker: Broker = null
-    var replicaOpt: Option[Broker] = null
+    var fetchTargetBroker: BrokerEndPoint = null
+    var replicaOpt: Option[BrokerEndPoint] = null
     if(replicaId == UseLeaderReplica) {
       replicaOpt = partitionMetadataOpt.get.leader
       if(!replicaOpt.isDefined) {
@@ -167,7 +168,9 @@ object SimpleConsumerShell extends Logging {
       System.exit(1)
     }
     if (startingOffset < 0) {
-      val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, ConsumerConfig.SocketTimeout,
+      val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host,
+                                              fetchTargetBroker.port,
+                                              ConsumerConfig.SocketTimeout,
                                               ConsumerConfig.SocketBufferSize, clientId)
       try {
         startingOffset = simpleConsumer.earliestOrLatestOffset(TopicAndPartition(topic, partitionId), startingOffset,
@@ -188,8 +191,12 @@ object SimpleConsumerShell extends Logging {
 
     val replicaString = if(replicaId > 0) "leader" else "replica"
     info("Starting simple consumer shell to partition [%s, %d], %s [%d], host and port: [%s, %d], from offset [%d]"
-                 .format(topic, partitionId, replicaString, replicaId, fetchTargetBroker.host, fetchTargetBroker.port, startingOffset))
-    val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, 10000, 64*1024, clientId)
+                 .format(topic, partitionId, replicaString, replicaId,
+                         fetchTargetBroker.host,
+                         fetchTargetBroker.port, startingOffset))
+    val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host,
+                                            fetchTargetBroker.port,
+                                            10000, 64*1024, clientId)
     val thread = Utils.newThread("kafka-simpleconsumer-shell", new Runnable() {
       def run() {
         var offset = startingOffset

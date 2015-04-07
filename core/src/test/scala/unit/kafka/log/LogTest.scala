@@ -32,18 +32,18 @@ class LogTest extends JUnitSuite {
   var logDir: File = null
   val time = new MockTime(0)
   var config: KafkaConfig = null
-  val logConfig = LogConfig()
+  val logConfig = LogConfig()  
 
   @Before
   def setUp() {
     logDir = TestUtils.tempDir()
-    val props = TestUtils.createBrokerConfig(0, -1)
+    val props = TestUtils.createBrokerConfig(0, "127.0.0.1:1", port = -1)
     config = KafkaConfig.fromProps(props)
   }
 
   @After
   def tearDown() {
-    Utils.rm(logDir)
+    CoreUtils.rm(logDir)
   }
   
   def createEmptyLogs(dir: File, offsets: Int*) {
@@ -269,13 +269,13 @@ class LogTest extends JUnitSuite {
     log.append(new ByteBufferMessageSet(DefaultCompressionCodec, new Message("hello".getBytes), new Message("there".getBytes)))
     log.append(new ByteBufferMessageSet(DefaultCompressionCodec, new Message("alpha".getBytes), new Message("beta".getBytes)))
 
-    def read(offset: Int) = ByteBufferMessageSet.decompress(log.read(offset, 4096).messageSet.head.message)
+    def read(offset: Int) = ByteBufferMessageSet.deepIterator(log.read(offset, 4096).messageSet.head.message)
 
     /* we should always get the first message in the compressed set when reading any offset in the set */
-    assertEquals("Read at offset 0 should produce 0", 0, read(0).head.offset)
-    assertEquals("Read at offset 1 should produce 0", 0, read(1).head.offset)
-    assertEquals("Read at offset 2 should produce 2", 2, read(2).head.offset)
-    assertEquals("Read at offset 3 should produce 2", 2, read(3).head.offset)
+    assertEquals("Read at offset 0 should produce 0", 0, read(0).next().offset)
+    assertEquals("Read at offset 1 should produce 0", 0, read(1).next().offset)
+    assertEquals("Read at offset 2 should produce 2", 2, read(2).next().offset)
+    assertEquals("Read at offset 3 should produce 2", 2, read(3).next().offset)
   }
 
   /**
@@ -714,7 +714,7 @@ class LogTest extends JUnitSuite {
       log = new Log(logDir, config, recoveryPoint, time.scheduler, time)
       assertEquals(numMessages, log.logEndOffset)
       assertEquals("Messages in the log after recovery should be the same.", messages, log.logSegments.flatMap(_.log.iterator.toList))
-      Utils.rm(logDir)
+      CoreUtils.rm(logDir)
     }
   }
 

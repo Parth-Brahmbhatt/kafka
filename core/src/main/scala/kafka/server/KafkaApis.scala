@@ -17,12 +17,12 @@
 
 package kafka.server
 
+
 import kafka.message.{MessageSet}
 import kafka.security.auth.{Operation, Authorizer}
-import org.apache.kafka.common.requests.JoinGroupResponse
-import org.apache.kafka.common.requests.HeartbeatResponse
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.requests.{JoinGroupResponse, JoinGroupRequest, HeartbeatRequest, HeartbeatResponse, ResponseHeader}
 import org.apache.kafka.common.TopicPartition
-
 import kafka.api._
 import kafka.admin.AdminUtils
 import kafka.common._
@@ -78,7 +78,19 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     } catch {
       case e: Throwable =>
-        request.requestObj.handleError(e, requestChannel, request)
+        if ( request.requestObj != null)
+          request.requestObj.handleError(e, requestChannel, request)
+        else {
+          val response = request.body.getErrorResponse(e)
+          val respHeader = new ResponseHeader(request.header.correlationId)
+
+          /* If request doesn't have a default error response, we just close the connection.
+             For example, when produce request has acks set to 0 */
+          if (response == null)
+            requestChannel.closeConnection(request.processor, request)
+          else
+            requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(respHeader, response)))
+        }
         error("error when handling request %s".format(request.requestObj), e)
     } finally
       request.apiLocalCompleteTimeMs = SystemTime.milliseconds
@@ -200,12 +212,44 @@ class KafkaApis(val requestChannel: RequestChannel,
       val response = OffsetCommitResponse(mergedCommitStatus, offsetCommitRequest.correlationId)
       requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
     }
+
+    // compute the retention time based on the request version:
+    // if it is before v2 or not specified by user, we can use the default retention
+    val offsetRetention =
+      if (offsetCommitRequest.versionId <= 1 ||
+        offsetCommitRequest.retentionMs == org.apache.kafka.common.requests.OffsetCommitRequest.DEFAULT_RETENTION_TIME) {
+        offsetManager.config.offsetsRetentionMs
+      } else {
+        offsetCommitRequest.retentionMs
+      }
+
+    // commit timestamp is always set to now.
+    // "default" expiration timestamp is now + retention (and retention may be overridden if v2)
+    // expire timestamp is computed differently for v1 and v2.
+    //   - If v1 and no explicit commit timestamp is provided we use default expiration timestamp.
+    //   - If v1 and explicit commit timestamp is provided we calculate retention from that explicit commit timestamp
+    //   - If v2 we use the default expiration timestamp
+    val currentTimestamp = SystemTime.milliseconds
+    val defaultExpireTimestamp = offsetRetention + currentTimestamp
+
+    val offsetData = requestInfo.mapValues(offsetAndMetadata =>
+      offsetAndMetadata.copy(
+        commitTimestamp = currentTimestamp,
+        expireTimestamp = {
+          if (offsetAndMetadata.commitTimestamp == org.apache.kafka.common.requests.OffsetCommitRequest.DEFAULT_TIMESTAMP)
+            defaultExpireTimestamp
+          else
+            offsetRetention + offsetAndMetadata.commitTimestamp
+        }
+      )
+    )
+
     // call offset manager to store offsets
     offsetManager.storeOffsets(
       offsetCommitRequest.groupId,
       offsetCommitRequest.consumerId,
       offsetCommitRequest.groupGenerationId,
-      requestInfo,
+      offsetData,
       sendResponseCallback)
   }
 
@@ -447,8 +491,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     ret.toSeq.sortBy(- _)
   }
 
-  private def getTopicMetadata(topics: Set[String]): Seq[TopicMetadata] = {
-    val topicResponses = metadataCache.getTopicMetadata(topics)
+  private def getTopicMetadata(topics: Set[String], securityProtocol: SecurityProtocol): Seq[TopicMetadata] = {
+    val topicResponses = metadataCache.getTopicMetadata(topics, securityProtocol)
     if (topics.size > 0 && topicResponses.size != topics.size) {
       val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
       val responsesForNonExistentTopics = nonExistentTopics.map { topic =>
@@ -502,10 +546,10 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
-    val topicMetadata = getTopicMetadata(topics)
+    val topicMetadata = getTopicMetadata(topics, request.securityProtocol)
     val brokers = metadataCache.getAliveBrokers
     trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(topicMetadata.mkString(","), brokers.mkString(","), metadataRequest.correlationId, metadataRequest.clientId))
-    val response = new TopicMetadataResponse(brokers, topicMetadata ++ unauthorizedTopicMetaData, metadataRequest.correlationId)
+    val response = new TopicMetadataResponse(brokers.map(_.getBrokerEndPoint(request.securityProtocol)), topicMetadata ++ unauthorizedTopicMetaData, metadataRequest.correlationId)
     requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
   }
 
@@ -525,7 +569,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     )
 
-    val authorizationError = OffsetMetadataAndError(OffsetAndMetadata.InvalidOffset, OffsetAndMetadata.NoMetadata, ErrorMapping.AuthorizationCode)
+    val authorizationError = OffsetMetadataAndError(OffsetMetadata.InvalidOffsetMetadata, ErrorMapping.AuthorizationCode)
     val unauthorizedStatus = unauthorizedTopicPartitions.map(topicAndPartition => (topicAndPartition, authorizationError)).toMap
 
     val (unknownTopicPartitions, knownTopicPartitions) = authorizedTopicPartitions.partition(topicAndPartition =>
@@ -562,7 +606,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     // get metadata (and create the topic if necessary)
-    val offsetsTopicMetadata = getTopicMetadata(Set(OffsetManager.OffsetsTopicName)).head
+    val offsetsTopicMetadata = getTopicMetadata(Set(OffsetManager.OffsetsTopicName), request.securityProtocol).head
 
     val errorResponse = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, consumerMetadataRequest.correlationId)
 
@@ -581,9 +625,10 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleJoinGroupRequest(request: RequestChannel.Request) {
     import JavaConversions._
 
-    val joinGroupRequest = request.requestObj.asInstanceOf[JoinGroupRequestAndHeader]
+    val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
+    val respHeader = new ResponseHeader(request.header.correlationId)
 
-    val (authorizedTopics, unauthorizedTopics) =  joinGroupRequest.body.topics().partition(
+    val (authorizedTopics, unauthorizedTopics) =  joinGroupRequest.topics().partition(
       topic => {
         if(authorizer!= null)
           authorizer.authorize(request.session, Operation.DESCRIBE, topic)
@@ -598,43 +643,43 @@ class KafkaApis(val requestChannel: RequestChannel,
     def sendResponseCallback(partitions: List[TopicAndPartition], generationId: Int, errorCode: Short) {
       val partitionList = (partitions.map(tp => new TopicPartition(tp.topic, tp.partition)) ++ unauthorizedTopicPartition).toBuffer
       val error = if (errorCode == ErrorMapping.NoError && !unauthorizedTopicPartition.isEmpty) ErrorMapping.AuthorizationCode else errorCode
-      val responseBody = new JoinGroupResponse(error, generationId, joinGroupRequest.body.consumerId, partitionList)
-      val response = new JoinGroupResponseAndHeader(joinGroupRequest.correlationId, responseBody)
-      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+      val responseBody = new JoinGroupResponse(errorCode, generationId, joinGroupRequest.consumerId, partitionList)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(respHeader, responseBody)))
     }
 
     // let the coordinator to handle join-group
     coordinator.consumerJoinGroup(
-      joinGroupRequest.body.groupId(),
-      joinGroupRequest.body.consumerId(),
-      authorizedTopics.toList,
-      joinGroupRequest.body.sessionTimeout(),
-      joinGroupRequest.body.strategy(),
+      joinGroupRequest.groupId(),
+      joinGroupRequest.consumerId(),
+    authorizedTopics.toList,
+      joinGroupRequest.sessionTimeout(),
+      joinGroupRequest.strategy(),
       sendResponseCallback)
   }
 
   def handleHeartbeatRequest(request: RequestChannel.Request) {
-    val heartbeatRequest = request.requestObj.asInstanceOf[HeartbeatRequestAndHeader]
+    val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
+    val respHeader = new ResponseHeader(request.header.correlationId)
 
     if(authorizer != null) {
       if (!authorizer.authorize(request.session, Operation.SEND_CONTROL_MSG, null)) {
-        val heartbeatResponseAndHeader = new HeartbeatResponseAndHeader(heartbeatRequest.correlationId, new HeartbeatResponse(ErrorMapping.AuthorizationCode))
-        requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(heartbeatResponseAndHeader)))
+        val heartbeatResponse = new HeartbeatResponse(ErrorMapping.AuthorizationCode)
+        requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(respHeader, heartbeatResponse)))
         return
       }
     }
 
     // the callback for sending a heartbeat response
     def sendResponseCallback(errorCode: Short) {
-      val response = new HeartbeatResponseAndHeader(heartbeatRequest.correlationId, new HeartbeatResponse(errorCode))
-      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+      val response = new HeartbeatResponse(errorCode)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(respHeader, response)))
     }
 
     // let the coordinator to handle heartbeat
     coordinator.consumerHeartbeat(
-      heartbeatRequest.body.groupId(),
-      heartbeatRequest.body.consumerId(),
-      heartbeatRequest.body.groupGenerationId(),
+      heartbeatRequest.groupId(),
+      heartbeatRequest.consumerId(),
+      heartbeatRequest.groupGenerationId(),
       sendResponseCallback)
   }
 

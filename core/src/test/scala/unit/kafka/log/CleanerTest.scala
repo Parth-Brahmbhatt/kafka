@@ -26,6 +26,8 @@ import scala.collection._
 import kafka.common._
 import kafka.utils._
 import kafka.message._
+import java.util.concurrent.atomic.AtomicLong
+import org.apache.kafka.common.utils.Utils
 
 /**
  * Unit tests for the log cleaning logic
@@ -39,7 +41,7 @@ class CleanerTest extends JUnitSuite {
   
   @After
   def teardown() {
-    Utils.rm(dir)
+    CoreUtils.rm(dir)
   }
   
   /**
@@ -122,7 +124,7 @@ class CleanerTest extends JUnitSuite {
   
   /* extract all the keys from a log */
   def keysInLog(log: Log): Iterable[Int] =
-    log.logSegments.flatMap(s => s.log.filter(!_.message.isNull).filter(_.message.hasKey).map(m => Utils.readString(m.message.key).toInt))
+    log.logSegments.flatMap(s => s.log.filter(!_.message.isNull).filter(_.message.hasKey).map(m => TestUtils.readString(m.message.key).toInt))
 
   def unkeyedMessageCountInLog(log: Log) =
     log.logSegments.map(s => s.log.filter(!_.message.isNull).count(m => !m.message.hasKey)).sum
@@ -195,6 +197,51 @@ class CleanerTest extends JUnitSuite {
     groups = cleaner.groupSegmentsBySize(log.logSegments, maxSize = Int.MaxValue, maxIndexSize = indexSize)
     checkSegmentOrder(groups)
     assertTrue("All but the last group should be the target size.", groups.dropRight(1).forall(_.size == groupSize))
+  }
+  
+  /**
+   * Validate the logic for grouping log segments together for cleaning when only a small number of
+   * messages are retained, but the range of offsets is greater than Int.MaxValue. A group should not
+   * contain a range of offsets greater than Int.MaxValue to ensure that relative offsets can be
+   * stored in 4 bytes.
+   */
+  @Test
+  def testSegmentGroupingWithSparseOffsets() {
+    val cleaner = makeCleaner(Int.MaxValue)
+    val log = makeLog(config = logConfig.copy(segmentSize = 1024, indexInterval = 1))
+       
+    // fill up first segment
+    while (log.numberOfSegments == 1)
+      log.append(TestUtils.singleMessageSet(payload = "hello".getBytes, key = "hello".getBytes))
+    
+    // forward offset and append message to next segment at offset Int.MaxValue
+    val messageSet = new ByteBufferMessageSet(NoCompressionCodec, new AtomicLong(Int.MaxValue-1), new Message("hello".getBytes, "hello".getBytes))
+    log.append(messageSet, assignOffsets = false)
+    log.append(TestUtils.singleMessageSet(payload = "hello".getBytes, key = "hello".getBytes))
+    assertEquals(Int.MaxValue, log.activeSegment.index.lastOffset)
+    
+    // grouping should result in a single group with maximum relative offset of Int.MaxValue
+    var groups = cleaner.groupSegmentsBySize(log.logSegments, maxSize = Int.MaxValue, maxIndexSize = Int.MaxValue)
+    assertEquals(1, groups.size)
+    
+    // append another message, making last offset of second segment > Int.MaxValue
+    log.append(TestUtils.singleMessageSet(payload = "hello".getBytes, key = "hello".getBytes))
+    
+    // grouping should not group the two segments to ensure that maximum relative offset in each group <= Int.MaxValue
+    groups = cleaner.groupSegmentsBySize(log.logSegments, maxSize = Int.MaxValue, maxIndexSize = Int.MaxValue)
+    assertEquals(2, groups.size)
+    checkSegmentOrder(groups)
+    
+    // append more messages, creating new segments, further grouping should still occur
+    while (log.numberOfSegments < 4)
+      log.append(TestUtils.singleMessageSet(payload = "hello".getBytes, key = "hello".getBytes))
+
+    groups = cleaner.groupSegmentsBySize(log.logSegments, maxSize = Int.MaxValue, maxIndexSize = Int.MaxValue)
+    assertEquals(log.numberOfSegments-1, groups.size)
+    for (group <- groups)
+      assertTrue("Relative offset greater than Int.MaxValue", group.last.index.lastOffset - group.head.index.baseOffset <= Int.MaxValue)
+    checkSegmentOrder(groups)
+    
   }
   
   private def checkSegmentOrder(groups: Seq[Seq[LogSegment]]) {

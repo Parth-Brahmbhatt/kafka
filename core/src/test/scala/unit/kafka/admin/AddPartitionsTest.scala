@@ -17,31 +17,18 @@
 
 package kafka.admin
 
+import org.apache.kafka.common.protocol.SecurityProtocol
 import org.scalatest.junit.JUnit3Suite
 import kafka.zk.ZooKeeperTestHarness
 import kafka.utils.TestUtils._
 import junit.framework.Assert._
-import kafka.utils.{ZkUtils, Utils, TestUtils}
+import kafka.utils.{ZkUtils, CoreUtils, TestUtils}
 import kafka.cluster.Broker
 import kafka.client.ClientUtils
 import kafka.server.{KafkaConfig, KafkaServer}
 
 class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
-  val brokerId1 = 0
-  val brokerId2 = 1
-  val brokerId3 = 2
-  val brokerId4 = 3
-
-  val port1 = TestUtils.choosePort()
-  val port2 = TestUtils.choosePort()
-  val port3 = TestUtils.choosePort()
-  val port4 = TestUtils.choosePort()
-
-  val configProps1 = TestUtils.createBrokerConfig(brokerId1, port1, false)
-  val configProps2 = TestUtils.createBrokerConfig(brokerId2, port2, false)
-  val configProps3 = TestUtils.createBrokerConfig(brokerId3, port3, false)
-  val configProps4 = TestUtils.createBrokerConfig(brokerId4, port4, false)
-
+  var configs: Seq[KafkaConfig] = null
   var servers: Seq[KafkaServer] = Seq.empty[KafkaServer]
   var brokers: Seq[Broker] = Seq.empty[Broker]
 
@@ -54,14 +41,11 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
 
   override def setUp() {
     super.setUp()
-    // start all the servers
-    val server1 = TestUtils.createServer(KafkaConfig.fromProps(configProps1))
-    val server2 = TestUtils.createServer(KafkaConfig.fromProps(configProps2))
-    val server3 = TestUtils.createServer(KafkaConfig.fromProps(configProps3))
-    val server4 = TestUtils.createServer(KafkaConfig.fromProps(configProps4))
 
-    servers ++= List(server1, server2, server3, server4)
-    brokers = servers.map(s => new Broker(s.config.brokerId, s.config.hostName, s.config.port))
+    configs = (0 until 4).map(i => KafkaConfig.fromProps(TestUtils.createBrokerConfig(i, zkConnect, enableControlledShutdown = false)))
+    // start all the servers
+    servers = configs.map(c => TestUtils.createServer(c))
+    brokers = servers.map(s => new Broker(s.config.brokerId, s.config.hostName, s.boundPort))
 
     // create topics first
     createTopic(zkClient, topic1, partitionReplicaAssignment = Map(0->Seq(0,1)), servers = servers)
@@ -72,7 +56,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
 
   override def tearDown() {
     servers.map(server => server.shutdown())
-    servers.map(server => Utils.rm(server.config.logDirs))
+    servers.map(server => CoreUtils.rm(server.config.logDirs))
     super.tearDown()
   }
 
@@ -109,7 +93,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
     // read metadata from a broker and verify the new topic partitions exist
     TestUtils.waitUntilMetadataIsPropagated(servers, topic1, 1)
     TestUtils.waitUntilMetadataIsPropagated(servers, topic1, 2)
-    val metadata = ClientUtils.fetchTopicMetadata(Set(topic1), brokers, "AddPartitionsTest-testIncrementPartitions",
+    val metadata = ClientUtils.fetchTopicMetadata(Set(topic1), brokers.map(_.getBrokerEndPoint(SecurityProtocol.PLAINTEXT)), "AddPartitionsTest-testIncrementPartitions",
       2000,0).topicsMetadata
     val metaDataForTopic1 = metadata.filter(p => p.topic.equals(topic1))
     val partitionDataForTopic1 = metaDataForTopic1.head.partitionsMetadata
@@ -134,7 +118,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
     // read metadata from a broker and verify the new topic partitions exist
     TestUtils.waitUntilMetadataIsPropagated(servers, topic2, 1)
     TestUtils.waitUntilMetadataIsPropagated(servers, topic2, 2)
-    val metadata = ClientUtils.fetchTopicMetadata(Set(topic2), brokers, "AddPartitionsTest-testManualAssignmentOfReplicas",
+    val metadata = ClientUtils.fetchTopicMetadata(Set(topic2), brokers.map(_.getBrokerEndPoint(SecurityProtocol.PLAINTEXT)), "AddPartitionsTest-testManualAssignmentOfReplicas",
       2000,0).topicsMetadata
     val metaDataForTopic2 = metadata.filter(p => p.topic.equals(topic2))
     val partitionDataForTopic2 = metaDataForTopic2.head.partitionsMetadata
@@ -158,7 +142,7 @@ class AddPartitionsTest extends JUnit3Suite with ZooKeeperTestHarness {
     TestUtils.waitUntilMetadataIsPropagated(servers, topic3, 5)
     TestUtils.waitUntilMetadataIsPropagated(servers, topic3, 6)
 
-    val metadata = ClientUtils.fetchTopicMetadata(Set(topic3), brokers, "AddPartitionsTest-testReplicaPlacement",
+    val metadata = ClientUtils.fetchTopicMetadata(Set(topic3), brokers.map(_.getBrokerEndPoint(SecurityProtocol.PLAINTEXT)), "AddPartitionsTest-testReplicaPlacement",
       2000,0).topicsMetadata
 
     val metaDataForTopic3 = metadata.filter(p => p.topic.equals(topic3)).head

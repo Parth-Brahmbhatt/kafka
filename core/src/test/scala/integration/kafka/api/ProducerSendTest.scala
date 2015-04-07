@@ -17,15 +17,13 @@
 
 package kafka.api
 
-import java.lang.{Integer, IllegalArgumentException}
-
 import org.apache.kafka.clients.producer._
 import org.scalatest.junit.JUnit3Suite
 import org.junit.Test
 import org.junit.Assert._
 
 import kafka.server.KafkaConfig
-import kafka.utils.{TestZKUtils, TestUtils}
+import kafka.utils.TestUtils
 import kafka.consumer.SimpleConsumer
 import kafka.message.Message
 import kafka.integration.KafkaServerTestHarness
@@ -39,12 +37,10 @@ class ProducerSendTest extends JUnit3Suite with KafkaServerTestHarness {
   val numServers = 2
 
   val overridingProps = new Properties()
-  overridingProps.put(KafkaConfig.ZkConnectProp, TestZKUtils.zookeeperConnect)
   overridingProps.put(KafkaConfig.NumPartitionsProp, 4.toString)
 
-  val configs =
-    for (props <- TestUtils.createBrokerConfigs(numServers, false))
-    yield KafkaConfig.fromProps(props, overridingProps)
+  def generateConfigs() =
+    TestUtils.createBrokerConfigs(numServers, zkConnect, false).map(KafkaConfig.fromProps(_, overridingProps))
 
   private var consumer1: SimpleConsumer = null
   private var consumer2: SimpleConsumer = null
@@ -56,8 +52,8 @@ class ProducerSendTest extends JUnit3Suite with KafkaServerTestHarness {
     super.setUp()
 
     // TODO: we need to migrate to new consumers when 0.9 is final
-    consumer1 = new SimpleConsumer("localhost", configs(0).port, 100, 1024*1024, "")
-    consumer2 = new SimpleConsumer("localhost", configs(1).port, 100, 1024*1024, "")
+    consumer1 = new SimpleConsumer("localhost", servers(0).boundPort(), 100, 1024*1024, "")
+    consumer2 = new SimpleConsumer("localhost", servers(1).boundPort(), 100, 1024*1024, "")
   }
 
   override def tearDown() {

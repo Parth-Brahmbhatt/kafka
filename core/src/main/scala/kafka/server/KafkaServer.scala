@@ -26,10 +26,11 @@ import kafka.utils._
 import java.util.concurrent._
 import atomic.{AtomicInteger, AtomicBoolean}
 import java.io.File
+
 import collection.mutable
 import org.I0Itec.zkclient.ZkClient
 import kafka.controller.{ControllerStats, KafkaController}
-import kafka.cluster.Broker
+import kafka.cluster.{EndPoint, Broker}
 import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
 import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException}
 import kafka.network.{Receive, BlockingChannel, SocketServer}
@@ -120,8 +121,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
 
         socketServer = new SocketServer(config.brokerId,
-          config.hostName,
-          config.port,
+          config.listeners,
           config.numNetworkThreads,
           config.queuedMaxRequests,
           config.socketSendBufferBytes,
@@ -152,7 +152,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
         /* Get the authorizer */
         val authorizer: Authorizer = if (config.authorizerClassName != null && !config.authorizerClassName.isEmpty)
-          Utils.createObject(config.authorizerClassName)
+          CoreUtils.createObject(config.authorizerClassName)
         else
           null
         if(authorizer != null) {
@@ -172,7 +172,15 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         topicConfigManager.startup()
 
         /* tell everyone we are alive */
-        kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, config.advertisedHostName, config.advertisedPort, config.zkSessionTimeoutMs, zkClient)
+        val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
+          if (endpoint.port == 0)
+            (protocol, EndPoint(endpoint.host, socketServer.boundPort(), endpoint.protocolType))
+          else
+            (protocol, endpoint)
+        }
+
+        /* tell everyone we are alive */
+        kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
         kafkaHealthcheck.startup()
 
         /* register broker metrics */
@@ -257,7 +265,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                 if (channel != null) {
                   channel.disconnect()
                 }
-                channel = new BlockingChannel(broker.host, broker.port,
+                channel = new BlockingChannel(broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).host,
+                  broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).port,
                   BlockingChannel.UseDefaultBufferSize,
                   BlockingChannel.UseDefaultBufferSize,
                   config.controllerSocketTimeoutMs)
@@ -327,27 +336,27 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       val canShutdown = isShuttingDown.compareAndSet(false, true)
       if (canShutdown && shutdownLatch.getCount > 0) {
-        Utils.swallow(controlledShutdown())
+        CoreUtils.swallow(controlledShutdown())
         brokerState.newState(BrokerShuttingDown)
         if(socketServer != null)
-          Utils.swallow(socketServer.shutdown())
+          CoreUtils.swallow(socketServer.shutdown())
         if(requestHandlerPool != null)
-          Utils.swallow(requestHandlerPool.shutdown())
+          CoreUtils.swallow(requestHandlerPool.shutdown())
         if(offsetManager != null)
           offsetManager.shutdown()
-        Utils.swallow(kafkaScheduler.shutdown())
+        CoreUtils.swallow(kafkaScheduler.shutdown())
         if(apis != null)
-          Utils.swallow(apis.close())
+          CoreUtils.swallow(apis.close())
         if(replicaManager != null)
-          Utils.swallow(replicaManager.shutdown())
+          CoreUtils.swallow(replicaManager.shutdown())
         if(logManager != null)
-          Utils.swallow(logManager.shutdown())
+          CoreUtils.swallow(logManager.shutdown())
         if(consumerCoordinator != null)
-          Utils.swallow(consumerCoordinator.shutdown())
+          CoreUtils.swallow(consumerCoordinator.shutdown())
         if(kafkaController != null)
-          Utils.swallow(kafkaController.shutdown())
+          CoreUtils.swallow(kafkaController.shutdown())
         if(zkClient != null)
-          Utils.swallow(zkClient.close())
+          CoreUtils.swallow(zkClient.close())
 
         brokerState.newState(NotRunning)
 
@@ -371,6 +380,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
   def awaitShutdown(): Unit = shutdownLatch.await()
 
   def getLogManager(): LogManager = logManager
+
+  def boundPort(): Int = socketServer.boundPort()
 
   private def createLogManager(zkClient: ZkClient, brokerState: BrokerState): LogManager = {
     val defaultLogConfig = LogConfig(segmentSize = config.logSegmentBytes,
@@ -417,6 +428,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
       maxMetadataSize = config.offsetMetadataMaxSize,
       loadBufferSize = config.offsetsLoadBufferSize,
       offsetsRetentionMs = config.offsetsRetentionMinutes * 60 * 1000L,
+      offsetsRetentionCheckIntervalMs = config.offsetsRetentionCheckIntervalMs,
       offsetsTopicNumPartitions = config.offsetsTopicPartitions,
       offsetsTopicReplicationFactor = config.offsetsTopicReplicationFactor,
       offsetCommitTimeoutMs = config.offsetCommitTimeoutMs,
@@ -432,7 +444,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
     * <li> config has broker.id and meta.properties contains broker.id if they don't match throws InconsistentBrokerIdException
     * <li> config has broker.id and there is no meta.properties file, creates new meta.properties and stores broker.id
     * <ol>
-    * @returns A brokerId.
+    * @return A brokerId.
     */
   private def getBrokerId: Int =  {
     var brokerId = config.brokerId

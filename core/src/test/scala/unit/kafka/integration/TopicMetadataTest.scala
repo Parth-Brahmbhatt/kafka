@@ -17,12 +17,13 @@
 
 package kafka.integration
 
+import org.apache.kafka.common.protocol.SecurityProtocol
 import org.scalatest.junit.JUnit3Suite
 import kafka.zk.ZooKeeperTestHarness
 import kafka.admin.AdminUtils
 import java.nio.ByteBuffer
 import junit.framework.Assert._
-import kafka.cluster.Broker
+import kafka.cluster.{BrokerEndPoint, Broker}
 import kafka.utils.TestUtils
 import kafka.utils.TestUtils._
 import kafka.server.{KafkaServer, KafkaConfig}
@@ -31,14 +32,15 @@ import kafka.common.ErrorMapping
 import kafka.client.ClientUtils
 
 class TopicMetadataTest extends JUnit3Suite with ZooKeeperTestHarness {
-  val props = createBrokerConfigs(1)
-  val configs = props.map(p => KafkaConfig.fromProps(p))
   private var server1: KafkaServer = null
-  val brokers = configs.map(c => new Broker(c.brokerId,c.hostName,c.port))
+  var brokerEndPoints: Seq[BrokerEndPoint] = null
 
   override def setUp() {
     super.setUp()
+    val props = createBrokerConfigs(1, zkConnect)
+    val configs = props.map(KafkaConfig.fromProps)
     server1 = TestUtils.createServer(configs.head)
+    brokerEndPoints = Seq(new Broker(server1.config.brokerId, server1.config.hostName, server1.boundPort()).getBrokerEndPoint(SecurityProtocol.PLAINTEXT))
   }
 
   override def tearDown() {
@@ -67,7 +69,7 @@ class TopicMetadataTest extends JUnit3Suite with ZooKeeperTestHarness {
     val topic = "test"
     createTopic(zkClient, topic, numPartitions = 1, replicationFactor = 1, servers = Seq(server1))
 
-    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic),brokers,"TopicMetadataTest-testBasicTopicMetadata",
+    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), brokerEndPoints, "TopicMetadataTest-testBasicTopicMetadata",
       2000,0).topicsMetadata
     assertEquals(ErrorMapping.NoError, topicsMetadata.head.errorCode)
     assertEquals(ErrorMapping.NoError, topicsMetadata.head.partitionsMetadata.head.errorCode)
@@ -87,7 +89,7 @@ class TopicMetadataTest extends JUnit3Suite with ZooKeeperTestHarness {
     createTopic(zkClient, topic2, numPartitions = 1, replicationFactor = 1, servers = Seq(server1))
 
     // issue metadata request with empty list of topics
-    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set.empty, brokers, "TopicMetadataTest-testGetAllTopicMetadata",
+    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set.empty, brokerEndPoints, "TopicMetadataTest-testGetAllTopicMetadata",
       2000, 0).topicsMetadata
     assertEquals(ErrorMapping.NoError, topicsMetadata.head.errorCode)
     assertEquals(2, topicsMetadata.size)
@@ -106,7 +108,7 @@ class TopicMetadataTest extends JUnit3Suite with ZooKeeperTestHarness {
   def testAutoCreateTopic {
     // auto create topic
     val topic = "testAutoCreateTopic"
-    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic),brokers,"TopicMetadataTest-testAutoCreateTopic",
+    var topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), brokerEndPoints, "TopicMetadataTest-testAutoCreateTopic",
       2000,0).topicsMetadata
     assertEquals(ErrorMapping.LeaderNotAvailableCode, topicsMetadata.head.errorCode)
     assertEquals("Expecting metadata only for 1 topic", 1, topicsMetadata.size)
@@ -118,7 +120,7 @@ class TopicMetadataTest extends JUnit3Suite with ZooKeeperTestHarness {
     TestUtils.waitUntilMetadataIsPropagated(Seq(server1), topic, 0)
 
     // retry the metadata for the auto created topic
-    topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic),brokers,"TopicMetadataTest-testBasicTopicMetadata",
+    topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), brokerEndPoints, "TopicMetadataTest-testBasicTopicMetadata",
       2000,0).topicsMetadata
     assertEquals(ErrorMapping.NoError, topicsMetadata.head.errorCode)
     assertEquals(ErrorMapping.NoError, topicsMetadata.head.partitionsMetadata.head.errorCode)

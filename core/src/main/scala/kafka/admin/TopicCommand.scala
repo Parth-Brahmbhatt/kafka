@@ -21,18 +21,17 @@ import java.nio.file.{Paths, Files}
 
 import joptsimple._
 import java.util.Properties
-import kafka.common.AdminCommandFailedException
 import kafka.security.auth.Acl
+import kafka.common.{Topic, AdminCommandFailedException}
 import kafka.utils._
 import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.ZkNodeExistsException
 import scala.collection._
 import scala.collection.JavaConversions._
-import kafka.cluster.Broker
 import kafka.log.LogConfig
 import kafka.consumer.Whitelist
 import kafka.server.{TopicConfig, OffsetManager}
-import org.apache.kafka.common.utils.Utils.formatAddress
+import org.apache.kafka.common.utils.Utils
 
 
 object TopicCommand {
@@ -173,15 +172,21 @@ object TopicCommand {
     }
     topics.foreach { topic =>
       try {
-        ZkUtils.createPersistentPath(zkClient, ZkUtils.getDeleteTopicPath(topic))
-        println("Topic %s is marked for deletion.".format(topic))
-        println("Note: This will have no impact if delete.topic.enable is not set to true.")
+        if (Topic.InternalTopics.contains(topic)) {
+          throw new AdminOperationException("Topic %s is a kafka internal topic and is not allowed to be marked for deletion.".format(topic));
+        } else {
+          ZkUtils.createPersistentPath(zkClient, ZkUtils.getDeleteTopicPath(topic))
+          println("Topic %s is marked for deletion.".format(topic))
+          println("Note: This will have no impact if delete.topic.enable is not set to true.")
+        }
       } catch {
         case e: ZkNodeExistsException =>
           println("Topic %s is already marked for deletion.".format(topic))
-        case e2: Throwable =>
+        case e: AdminOperationException =>
+          throw e
+        case e: Throwable =>
           throw new AdminOperationException("Error while deleting topic %s".format(topic))
-      }    
+      }
     }
   }
 
@@ -233,8 +238,6 @@ object TopicCommand {
       }
     }
   }
-  
-  def formatBroker(broker: Broker) = broker.id + " (" + formatAddress(broker.host, broker.port) + ")"
 
   def parseAcl(opts: TopicCommandOptions): Set[Acl] = {
     if (opts.options.has(opts.aclOpt)) {
@@ -276,7 +279,7 @@ object TopicCommand {
     val ret = new mutable.HashMap[Int, List[Int]]()
     for (i <- 0 until partitionList.size) {
       val brokerList = partitionList(i).split(":").map(s => s.trim().toInt)
-      val duplicateBrokers = Utils.duplicates(brokerList)
+      val duplicateBrokers = CoreUtils.duplicates(brokerList)
       if (duplicateBrokers.nonEmpty)
         throw new AdminCommandFailedException("Partition replica lists may not contain duplicate entries: %s".format(duplicateBrokers.mkString(",")))
       ret.put(i, brokerList.toList)
