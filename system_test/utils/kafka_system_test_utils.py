@@ -436,6 +436,7 @@ def generate_overriden_props_files(testsuitePathname, testcaseEnv, systemTestEnv
                     addedCSVConfig["kafka.metrics.polling.interval.secs"] = "5"
                     addedCSVConfig["kafka.metrics.reporters"] = "kafka.metrics.KafkaCSVMetricsReporter"
                     addedCSVConfig["kafka.csv.metrics.reporter.enabled"] = "true"
+                    addedCSVConfig["listeners"] = "PLAINTEXT://localhost:"+tcCfg["port"]
 
                     if brokerVersion == "0.7":
                         addedCSVConfig["brokerid"] = tcCfg["brokerid"]
@@ -2400,6 +2401,9 @@ def validate_index_log(systemTestEnv, testcaseEnv, clusterName="source"):
                                 logger.debug("#### error found [" + line + "]", extra=d)
                                 failureCount += 1
                                 showMismatchedIndexOffset = True
+                        if subproc.wait() != 0:
+                            logger.debug("#### error found [DumpLogSegments exited abnormally]", extra=d)
+                            failureCount += 1
 
     if failureCount == 0:
         validationStatusDict["Validate index log in cluster [" + clusterName + "]"] = "PASSED"
