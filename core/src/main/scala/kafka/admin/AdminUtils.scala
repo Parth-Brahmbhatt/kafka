@@ -19,8 +19,9 @@ package kafka.admin
 
 import java.util.Random
 import java.util.Properties
+import org.apache.kafka.common.protocol.SecurityProtocol
 import kafka.api.{TopicMetadata, PartitionMetadata}
-import kafka.cluster.Broker
+import kafka.cluster.{BrokerEndPoint, Broker}
 import kafka.log.LogConfig
 import kafka.utils.{Logging, ZkUtils, Json}
 import org.I0Itec.zkclient.ZkClient
@@ -154,24 +155,24 @@ object AdminUtils extends Logging {
     }
     ret.toMap
   }
-  
+
   def deleteTopic(zkClient: ZkClient, topic: String) {
     ZkUtils.createPersistentPath(zkClient, ZkUtils.getDeleteTopicPath(topic))
   }
-  
-  def topicExists(zkClient: ZkClient, topic: String): Boolean = 
+
+  def topicExists(zkClient: ZkClient, topic: String): Boolean =
     zkClient.exists(ZkUtils.getTopicPath(topic))
-    
+
   def createTopic(zkClient: ZkClient,
                   topic: String,
-                  partitions: Int, 
-                  replicationFactor: Int, 
+                  partitions: Int,
+                  replicationFactor: Int,
                   topicConfig: Properties = new Properties) {
     val brokerList = ZkUtils.getSortedBrokerList(zkClient)
     val replicaAssignment = AdminUtils.assignReplicasToBrokers(brokerList, partitions, replicationFactor)
     AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkClient, topic, replicaAssignment, topicConfig)
   }
-                  
+
   def createOrUpdateTopicPartitionAssignmentPathInZK(zkClient: ZkClient,
                                                      topic: String,
                                                      partitionReplicaAssignment: Map[Int, Seq[Int]],
@@ -186,14 +187,14 @@ object AdminUtils extends Logging {
     if(!update && zkClient.exists(topicPath))
       throw new TopicExistsException("Topic \"%s\" already exists.".format(topic))
     partitionReplicaAssignment.values.foreach(reps => require(reps.size == reps.toSet.size, "Duplicate replica assignment found: "  + partitionReplicaAssignment))
-    
+
     // write out the config if there is any, this isn't transactional with the partition assignments
     writeTopicConfig(zkClient, topic, config)
-    
+
     // create the partition assignment
     writeTopicPartitionAssignment(zkClient, topic, partitionReplicaAssignment, update)
   }
-  
+
   private def writeTopicPartitionAssignment(zkClient: ZkClient, topic: String, replicaAssignment: Map[Int, Seq[Int]], update: Boolean) {
     try {
       val zkPath = ZkUtils.getTopicPath(topic)
@@ -212,7 +213,7 @@ object AdminUtils extends Logging {
       case e2: Throwable => throw new AdminOperationException(e2.toString)
     }
   }
-  
+
   /**
    * Update the config for an existing topic and create a change notification so the change will propagate to other brokers
    * @param zkClient: The ZkClient handle used to write the new config to zookeeper
@@ -230,11 +231,11 @@ object AdminUtils extends Logging {
 
     // write the new config--may not exist if there were previously no overrides
     writeTopicConfig(zkClient, topic, configs)
-    
+
     // create the change notification
     zkClient.createPersistentSequential(ZkUtils.TopicConfigChangesPath + "/" + TopicConfigChangeZnodePrefix, Json.encode(topic))
   }
-  
+
   /**
    * Write out the topic config to zk, if there is any
    */
@@ -246,7 +247,7 @@ object AdminUtils extends Logging {
     val map = Map("version" -> 1, "config" -> configMap)
     ZkUtils.updatePersistentPath(zkClient, ZkUtils.getTopicConfigPath(topic), Json.encode(map))
   }
-  
+
   /**
    * Read the topic config (if any) from zk
    */
@@ -256,7 +257,7 @@ object AdminUtils extends Logging {
     if(str != null) {
       Json.parseFull(str) match {
         case None => // there are no config overrides
-        case Some(map: Map[String, _]) => 
+        case Some(map: Map[String, _]) =>
           require(map("version") == 1)
           map.get("config") match {
             case Some(config: Map[String, String]) =>
@@ -282,7 +283,8 @@ object AdminUtils extends Logging {
     topics.map(topic => fetchTopicMetadataFromZk(topic, zkClient, cachedBrokerInfo))
   }
 
-  private def fetchTopicMetadataFromZk(topic: String, zkClient: ZkClient, cachedBrokerInfo: mutable.HashMap[Int, Broker]): TopicMetadata = {
+  private def fetchTopicMetadataFromZk(topic: String, zkClient: ZkClient,
+    cachedBrokerInfo: mutable.HashMap[Int, Broker], protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): TopicMetadata = {
     if(ZkUtils.pathExists(zkClient, ZkUtils.getTopicPath(topic))) {
       val topicPartitionAssignment = ZkUtils.getPartitionAssignmentForTopics(zkClient, List(topic)).get(topic).get
       val sortedPartitions = topicPartitionAssignment.toList.sortWith((m1, m2) => m1._1 < m2._1)
@@ -293,22 +295,22 @@ object AdminUtils extends Logging {
         val leader = ZkUtils.getLeaderForPartition(zkClient, topic, partition)
         debug("replicas = " + replicas + ", in sync replicas = " + inSyncReplicas + ", leader = " + leader)
 
-        var leaderInfo: Option[Broker] = None
-        var replicaInfo: Seq[Broker] = Nil
-        var isrInfo: Seq[Broker] = Nil
+        var leaderInfo: Option[BrokerEndPoint] = None
+        var replicaInfo: Seq[BrokerEndPoint] = Nil
+        var isrInfo: Seq[BrokerEndPoint] = Nil
         try {
           leaderInfo = leader match {
             case Some(l) =>
               try {
-                Some(getBrokerInfoFromCache(zkClient, cachedBrokerInfo, List(l)).head)
+                Some(getBrokerInfoFromCache(zkClient, cachedBrokerInfo, List(l)).head.getBrokerEndPoint(protocol))
               } catch {
                 case e: Throwable => throw new LeaderNotAvailableException("Leader not available for partition [%s,%d]".format(topic, partition), e)
               }
             case None => throw new LeaderNotAvailableException("No leader exists for partition " + partition)
           }
           try {
-            replicaInfo = getBrokerInfoFromCache(zkClient, cachedBrokerInfo, replicas.map(id => id.toInt))
-            isrInfo = getBrokerInfoFromCache(zkClient, cachedBrokerInfo, inSyncReplicas)
+            replicaInfo = getBrokerInfoFromCache(zkClient, cachedBrokerInfo, replicas).map(_.getBrokerEndPoint(protocol))
+            isrInfo = getBrokerInfoFromCache(zkClient, cachedBrokerInfo, inSyncReplicas).map(_.getBrokerEndPoint(protocol))
           } catch {
             case e: Throwable => throw new ReplicaNotAvailableException(e)
           }

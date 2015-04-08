@@ -21,6 +21,10 @@ import java.util.Properties
 import kafka.message.{MessageSet, Message}
 import kafka.consumer.ConsumerConfig
 import kafka.utils.{VerifiableProperties, ZKConfig, Utils}
+import kafka.cluster.EndPoint
+import kafka.api.ApiVersion
+import org.apache.kafka.common.protocol.SecurityProtocol
+import scala.collection.{immutable, JavaConversions, Map}
 
 /**
  * Configuration settings for the kafka server
@@ -35,13 +39,13 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   private def getLogRetentionTimeMillis(): Long = {
     val millisInMinute = 60L * 1000L
     val millisInHour = 60L * millisInMinute
-    
+
     if(props.containsKey("log.retention.ms")){
        props.getIntInRange("log.retention.ms", (1, Int.MaxValue))
     }
     else if(props.containsKey("log.retention.minutes")){
        millisInMinute * props.getIntInRange("log.retention.minutes", (1, Int.MaxValue))
-    } 
+    }
     else {
        millisInHour * props.getIntInRange("log.retention.hours", 24*7, (1, Int.MaxValue))
     }
@@ -49,7 +53,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   private def getLogRollTimeMillis(): Long = {
     val millisInHour = 60L * 60L * 1000L
-    
+
     if(props.containsKey("log.roll.ms")){
        props.getIntInRange("log.roll.ms", (1, Int.MaxValue))
     }
@@ -68,6 +72,24 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
       millisInHour * props.getIntInRange("log.roll.jitter.hours", 0, (0, Int.MaxValue))
     }
   }
+
+  private def validateUniquePortAndProtocol(listeners: String) {
+
+    val endpoints = try {
+      val listenerList = Utils.parseCsvList(listeners)
+      listenerList.map(listener => EndPoint.createEndPoint(listener))
+    } catch {
+      case e: Exception => throw new IllegalArgumentException("Error creating broker listeners from '%s': %s".format(listeners, e.getMessage))
+    }
+    val distinctPorts = endpoints.map(ep => ep.port).distinct
+    val distinctProtocols = endpoints.map(ep => ep.protocolType).distinct
+
+    require(distinctPorts.size == endpoints.size, "Each listener must have a different port")
+    require(distinctProtocols.size == endpoints.size, "Each listener must have a different protocol")
+  }
+
+
+
 
   /*********** General Configuration ***********/
 
@@ -117,10 +139,10 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /* the maximum number of bytes in a socket request */
   val socketRequestMaxBytes: Int = props.getIntInRange("socket.request.max.bytes", 100*1024*1024, (1, Int.MaxValue))
-  
+
   /* the maximum number of connections we allow from each ip address */
   val maxConnectionsPerIp: Int = props.getIntInRange("max.connections.per.ip", Int.MaxValue, (1, Int.MaxValue))
-  
+
   /* per-ip or hostname overrides to the default maximum number of connections */
   val maxConnectionsPerIpOverrides = props.getMap("max.connections.per.ip.overrides").map(entry => (entry._1, entry._2.toInt))
 
@@ -342,5 +364,44 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
+
+  val interBrokerSecurityProtocol: SecurityProtocol = SecurityProtocol.valueOf(props.getString("inter.broker.security.protocol", SecurityProtocol.PLAINTEXT.toString))
+  val interBrokerProtocolVersion: ApiVersion = ApiVersion(props.getString("inter.broker.protocol.version", ApiVersion.latestVersion.toString))
+
+
+  private val _listeners = props.getString("listeners", null)
+  val listeners = getListeners()
+
+  private val _advertisedListeners = props.getString("advertised.listeners", null)
+  val advertisedListeners = getAdvertisedListeners()
+
+  // If the user did not define listeners but did define host or port, let's use them in backward compatible way
+  // If none of those are defined, we default to PLAINTEXT://:9092
+  private def getListeners(): immutable.Map[SecurityProtocol, EndPoint] = {
+    if (_listeners != null) {
+      validateUniquePortAndProtocol(_listeners)
+      Utils.listenerListToEndPoints(_listeners)
+    } else {
+      if(hostName != null)
+        Utils.listenerListToEndPoints("PLAINTEXT://" + hostName + ":" + port)
+      else
+        Utils.listenerListToEndPoints("PLAINTEXT://" + ":" + port)
+    }
+  }
+
+  // If the user defined advertised listeners, we use those
+  // If he didn't but did define advertised host or port, we'll use those and fill in the missing value from regular host / port or defaults
+  // If none of these are defined, we'll use the listeners
+  private def getAdvertisedListeners(): immutable.Map[SecurityProtocol, EndPoint] = {
+    if (_advertisedListeners != null) {
+      validateUniquePortAndProtocol(_advertisedListeners)
+      Utils.listenerListToEndPoints(_advertisedListeners)
+    } else {
+      if(advertisedHostName != null)
+        Utils.listenerListToEndPoints("PLAINTEXT://" + advertisedHostName  + ":" + advertisedPort)
+      else
+        Utils.listenerListToEndPoints("PLAINTEXT://" + ":" + advertisedPort)
+    }
+  }
 
 }

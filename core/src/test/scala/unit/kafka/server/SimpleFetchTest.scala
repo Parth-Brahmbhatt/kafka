@@ -29,6 +29,7 @@ import scala.Some
 import org.easymock.EasyMock
 import org.I0Itec.zkclient.ZkClient
 import org.scalatest.junit.JUnit3Suite
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 class SimpleFetchTest extends JUnit3Suite {
 
@@ -124,7 +125,7 @@ class SimpleFetchTest extends JUnit3Suite {
     val goodFetchBB = TestUtils.createRequestByteBuffer(goodFetch)
 
     // send the request
-    apis.handleFetchRequest(new RequestChannel.Request(processor=1, requestKey=5, buffer=goodFetchBB, startTimeMs=1))
+    apis.handleFetchRequest(new RequestChannel.Request(processor=1, requestKey=5, buffer=goodFetchBB, startTimeMs=1, securityProtocol=SecurityProtocol.PLAINTEXT))
 
     // make sure the log only reads bytes between 0->HW (5)
     EasyMock.verify(log)
@@ -218,7 +219,7 @@ class SimpleFetchTest extends JUnit3Suite {
     val fetchRequestBB = TestUtils.createRequestByteBuffer(bigFetch)
 
     // send the request
-    apis.handleFetchRequest(new RequestChannel.Request(processor=0, requestKey=5, buffer=fetchRequestBB, startTimeMs=1))
+    apis.handleFetchRequest(new RequestChannel.Request(processor=0, requestKey=5, buffer=fetchRequestBB, startTimeMs=1, securityProtocol=SecurityProtocol.PLAINTEXT))
 
     /**
      * Make sure the log satisfies the fetch from a follower by reading data beyond the HW, mainly all bytes after

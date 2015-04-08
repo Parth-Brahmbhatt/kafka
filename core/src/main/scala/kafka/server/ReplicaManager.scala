@@ -19,7 +19,7 @@ package kafka.server
 import kafka.api._
 import kafka.common._
 import kafka.utils._
-import kafka.cluster.{Broker, Partition, Replica}
+import kafka.cluster.{BrokerEndPoint, Partition, Replica}
 import kafka.log.LogManager
 import kafka.metrics.KafkaMetricsGroup
 import kafka.controller.KafkaController
@@ -46,7 +46,7 @@ object ReplicaManager {
 case class PartitionDataAndOffset(data: FetchResponsePartitionData, offset: LogOffsetMetadata)
 
 
-class ReplicaManager(val config: KafkaConfig, 
+class ReplicaManager(val config: KafkaConfig,
                      time: Time,
                      val zkClient: ZkClient,
                      scheduler: Scheduler,
@@ -462,7 +462,7 @@ class ReplicaManager(val config: KafkaConfig,
    * the error message will be set on each partition since we do not know which partition caused it
    */
   private def makeFollowers(controllerId: Int, epoch: Int, partitionState: Map[Partition, PartitionStateInfo],
-                            leaders: Set[Broker], correlationId: Int, responseMap: mutable.Map[(String, Int), Short],
+                            leaders: Set[BrokerEndPoint], correlationId: Int, responseMap: mutable.Map[(String, Int), Short],
                             offsetManager: OffsetManager) {
     partitionState.foreach { state =>
       stateChangeLogger.trace(("Broker %d handling LeaderAndIsr request correlationId %d from controller %d epoch %d " +

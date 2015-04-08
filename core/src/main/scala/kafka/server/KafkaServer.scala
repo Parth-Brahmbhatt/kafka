@@ -27,7 +27,7 @@ import atomic.{AtomicInteger, AtomicBoolean}
 import java.io.File
 import org.I0Itec.zkclient.ZkClient
 import kafka.controller.{ControllerStats, KafkaController}
-import kafka.cluster.Broker
+import kafka.cluster.{EndPoint, Broker}
 import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
 import kafka.common.ErrorMapping
 import kafka.network.{Receive, BlockingChannel, SocketServer}
@@ -77,7 +77,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       /* start scheduler */
       kafkaScheduler.startup()
-    
+
       /* setup zookeeper */
       zkClient = initZk()
 
@@ -86,8 +86,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
       logManager.startup()
 
       socketServer = new SocketServer(config.brokerId,
-                                      config.hostName,
-                                      config.port,
+                                      config.listeners,
                                       config.numNetworkThreads,
                                       config.queuedMaxRequests,
                                       config.socketSendBufferBytes,
@@ -104,26 +103,33 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
       offsetManager = createOffsetManager()
 
       kafkaController = new KafkaController(config, zkClient, brokerState)
-    
+
       /* start processing requests */
       apis = new KafkaApis(socketServer.requestChannel, replicaManager, offsetManager, zkClient, config.brokerId, config, kafkaController)
       requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
       brokerState.newState(RunningAsBroker)
-   
+
       Mx4jLoader.maybeLoad()
 
       replicaManager.startup()
 
       kafkaController.startup()
-    
+
       topicConfigManager = new TopicConfigManager(zkClient, logManager)
       topicConfigManager.startup()
-    
+
+
       /* tell everyone we are alive */
-      kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, config.advertisedHostName, config.advertisedPort, config.zkSessionTimeoutMs, zkClient)
+      val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
+        if (endpoint.port == 0)
+          (protocol, EndPoint(endpoint.host, socketServer.boundPort(), endpoint.protocolType))
+        else
+          (protocol, endpoint)
+      }
+
+      kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
       kafkaHealthcheck.startup()
 
-    
       registerStats()
       startupComplete.set(true)
       info("started")
@@ -200,7 +206,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                 if (channel != null) {
                   channel.disconnect()
                 }
-                channel = new BlockingChannel(broker.host, broker.port,
+                channel = new BlockingChannel(broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).host,
+                  broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).port,
                   BlockingChannel.UseDefaultBufferSize,
                   BlockingChannel.UseDefaultBufferSize,
                   config.controllerSocketTimeoutMs)
@@ -305,7 +312,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
   def awaitShutdown(): Unit = shutdownLatch.await()
 
   def getLogManager(): LogManager = logManager
-  
+
   private def createLogManager(zkClient: ZkClient, brokerState: BrokerState): LogManager = {
     val defaultLogConfig = LogConfig(segmentSize = config.logSegmentBytes,
                                      segmentMs = config.logRollTimeMillis,
@@ -358,4 +365,3 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
   }
 
 }
-

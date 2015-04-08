@@ -21,11 +21,12 @@ import java.util.Properties
 import java.util.Collections
 import scala.collection._
 import kafka.message.{CompressionCodec, NoCompressionCodec}
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 
 class VerifiableProperties(val props: Properties) extends Logging {
   private val referenceSet = mutable.HashSet[String]()
-  
+
   def this() = this(new Properties)
 
   def containsKey(name: String): Boolean = {
@@ -121,7 +122,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
     require(v >= range._1 && v <= range._2, name + " has value " + v + " which is not in the range " + range + ".")
     v
   }
-  
+
   /**
    * Get a required argument as a double
    * @param name The property name
@@ -129,7 +130,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
    * @throws IllegalArgumentException If the given property is not present
    */
   def getDouble(name: String): Double = getString(name).toDouble
-  
+
   /**
    * Get an optional argument as a double
    * @param name The property name
@@ -140,7 +141,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
       getDouble(name)
     else
       default
-  } 
+  }
 
   /**
    * Read a boolean value from the properties instance
@@ -157,7 +158,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
       v.toBoolean
     }
   }
-  
+
   def getBoolean(name: String) = getString(name).toBoolean
 
   /**
@@ -177,7 +178,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
     require(containsKey(name), "Missing required property '" + name + "'")
     getProperty(name)
   }
-  
+
   /**
    * Get a Map[String, String] from a property list in the form k1:v2, k2:v2, ...
    */
@@ -185,7 +186,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
     try {
       val m = Utils.parseCsvMap(getString(name, ""))
       m.foreach {
-        case(key, value) => 
+        case(key, value) =>
           if(!valid(value))
             throw new IllegalArgumentException("Invalid entry '%s' = '%s' for property '%s'".format(key, value, name))
       }
@@ -226,7 +227,7 @@ class VerifiableProperties(val props: Properties) extends Logging {
         info("Property %s is overridden to %s".format(key, props.getProperty(key)))
     }
   }
-  
+
   override def toString(): String = props.toString
- 
+
 }

@@ -26,6 +26,7 @@ import kafka.admin.AdminUtils
 import kafka.network.RequestChannel.Response
 import kafka.controller.KafkaController
 import kafka.utils.{ZkUtils, ZKGroupTopicDirs, SystemTime, Logging}
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 import scala.collection._
 
@@ -107,7 +108,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   private def ensureTopicExists(topic: String) = {
-    if (metadataCache.getTopicMetadata(Set(topic)).size <= 0)
+    if (metadataCache.getTopicMetadata(Set(topic), SecurityProtocol.PLAINTEXT).size <= 0)
       throw new UnknownTopicOrPartitionException("Topic " + topic + " either doesn't exist or is in the process of being deleted")
   }
 
@@ -264,9 +265,9 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   case class ProduceResult(key: TopicAndPartition, start: Long, end: Long, error: Option[Throwable] = None) {
-    def this(key: TopicAndPartition, throwable: Throwable) = 
+    def this(key: TopicAndPartition, throwable: Throwable) =
       this(key, -1L, -1L, Some(throwable))
-    
+
     def errorCode = error match {
       case None => ErrorMapping.NoError
       case Some(error) => ErrorMapping.codeFor(error.getClass.asInstanceOf[Class[Throwable]])
@@ -395,7 +396,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Service the offset request API 
+   * Service the offset request API
    */
   def handleOffsetRequest(request: RequestChannel.Request) {
     val offsetRequest = request.requestObj.asInstanceOf[OffsetRequest]
@@ -418,7 +419,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             val hw = localReplica.highWatermark.messageOffset
             if (allOffsets.exists(_ > hw))
               hw +: allOffsets.dropWhile(_ > hw)
-            else 
+            else
               allOffsets
           }
         }
@@ -442,19 +443,19 @@ class KafkaApis(val requestChannel: RequestChannel,
     val response = OffsetResponse(offsetRequest.correlationId, responseMap)
     requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
   }
-  
+
   def fetchOffsets(logManager: LogManager, topicAndPartition: TopicAndPartition, timestamp: Long, maxNumOffsets: Int): Seq[Long] = {
     logManager.getLog(topicAndPartition) match {
-      case Some(log) => 
+      case Some(log) =>
         fetchOffsetsBefore(log, timestamp, maxNumOffsets)
-      case None => 
+      case None =>
         if (timestamp == OffsetRequest.LatestTime || timestamp == OffsetRequest.EarliestTime)
           Seq(0L)
         else
           Nil
     }
   }
-  
+
   def fetchOffsetsBefore(log: Log, timestamp: Long, maxNumOffsets: Int): Seq[Long] = {
     val segsArray = log.logSegments.toArray
     var offsetTimeArray: Array[(Long, Long)] = null
@@ -496,8 +497,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     ret.toSeq.sortBy(- _)
   }
 
-  private def getTopicMetadata(topics: Set[String]): Seq[TopicMetadata] = {
-    val topicResponses = metadataCache.getTopicMetadata(topics)
+  private def getTopicMetadata(topics: Set[String], securityProtocol: SecurityProtocol): Seq[TopicMetadata] = {
+    val topicResponses = metadataCache.getTopicMetadata(topics, securityProtocol)
     if (topics.size > 0 && topicResponses.size != topics.size) {
       val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
       val responsesForNonExistentTopics = nonExistentTopics.map { topic =>
@@ -539,10 +540,10 @@ class KafkaApis(val requestChannel: RequestChannel,
    */
   def handleTopicMetadataRequest(request: RequestChannel.Request) {
     val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataRequest]
-    val topicMetadata = getTopicMetadata(metadataRequest.topics.toSet)
+    val topicMetadata = getTopicMetadata(metadataRequest.topics.toSet, request.securityProtocol)
     val brokers = metadataCache.getAliveBrokers
     trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(topicMetadata.mkString(","), brokers.mkString(","), metadataRequest.correlationId, metadataRequest.clientId))
-    val response = new TopicMetadataResponse(brokers, topicMetadata, metadataRequest.correlationId)
+    val response = new TopicMetadataResponse(brokers.map(_.getBrokerEndPoint(request.securityProtocol)), topicMetadata, metadataRequest.correlationId)
     requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
   }
 
@@ -604,7 +605,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val partition = offsetManager.partitionFor(consumerMetadataRequest.group)
 
     // get metadata (and create the topic if necessary)
-    val offsetsTopicMetadata = getTopicMetadata(Set(OffsetManager.OffsetsTopicName)).head
+    val offsetsTopicMetadata = getTopicMetadata(Set(OffsetManager.OffsetsTopicName), request.securityProtocol).head
 
     val errorResponse = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, consumerMetadataRequest.correlationId)
 
@@ -627,4 +628,3 @@ class KafkaApis(val requestChannel: RequestChannel,
     debug("Shut down complete.")
   }
 }
-

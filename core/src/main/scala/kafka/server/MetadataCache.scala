@@ -17,6 +17,10 @@
 
 package kafka.server
 
+import kafka.cluster.{BrokerEndPoint,Broker}
+import kafka.common.{ErrorMapping, ReplicaNotAvailableException, LeaderNotAvailableException}
+import kafka.common.TopicAndPartition
+
 import scala.collection.{Seq, Set, mutable}
 import kafka.api._
 import kafka.cluster.Broker
@@ -25,6 +29,7 @@ import kafka.utils.Utils._
 import kafka.common.{ErrorMapping, ReplicaNotAvailableException, LeaderNotAvailableException}
 import kafka.common.TopicAndPartition
 import kafka.controller.KafkaController.StateChangeLogger
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 /**
  *  A cache for the state (e.g., current leader) of each partition. This cache is updated through
@@ -36,7 +41,7 @@ private[server] class MetadataCache {
   private var aliveBrokers: Map[Int, Broker] = Map()
   private val partitionMetadataLock = new ReentrantReadWriteLock()
 
-  def getTopicMetadata(topics: Set[String]) = {
+  def getTopicMetadata(topics: Set[String], protocol: SecurityProtocol) = {
     val isAllTopics = topics.isEmpty
     val topicsRequested = if(isAllTopics) cache.keySet else topics
     val topicResponses: mutable.ListBuffer[TopicMetadata] = new mutable.ListBuffer[TopicMetadata]
@@ -47,18 +52,21 @@ private[server] class MetadataCache {
           val partitionMetadata = partitionStateInfos.map {
             case (partitionId, partitionState) =>
               val replicas = partitionState.allReplicas
-              val replicaInfo: Seq[Broker] = replicas.map(aliveBrokers.getOrElse(_, null)).filter(_ != null).toSeq
-              var leaderInfo: Option[Broker] = None
-              var isrInfo: Seq[Broker] = Nil
+              val replicaInfo: Seq[BrokerEndPoint] = replicas.map(aliveBrokers.getOrElse(_, null)).filter(_ != null).toSeq.map(_.getBrokerEndPoint(protocol))
+              var leaderInfo: Option[BrokerEndPoint] = None
+              var leaderBrokerInfo: Option[Broker] = None
+              var isrInfo: Seq[BrokerEndPoint] = Nil
               val leaderIsrAndEpoch = partitionState.leaderIsrAndControllerEpoch
               val leader = leaderIsrAndEpoch.leaderAndIsr.leader
               val isr = leaderIsrAndEpoch.leaderAndIsr.isr
               val topicPartition = TopicAndPartition(topic, partitionId)
               try {
-                leaderInfo = aliveBrokers.get(leader)
-                if (!leaderInfo.isDefined)
+                leaderBrokerInfo = aliveBrokers.get(leader)
+                if (!leaderBrokerInfo.isDefined)
                   throw new LeaderNotAvailableException("Leader not available for %s".format(topicPartition))
-                isrInfo = isr.map(aliveBrokers.getOrElse(_, null)).filter(_ != null)
+                else
+                  leaderInfo = Some(leaderBrokerInfo.get.getBrokerEndPoint(protocol))
+                isrInfo = isr.map(aliveBrokers.getOrElse(_, null)).filter(_ != null).map(_.getBrokerEndPoint(protocol))
                 if (replicaInfo.size < replicas.size)
                   throw new ReplicaNotAvailableException("Replica information not available for following brokers: " +
                     replicas.filterNot(replicaInfo.map(_.id).contains(_)).mkString(","))
@@ -146,4 +154,3 @@ private[server] class MetadataCache {
     }
   }
 }
-

@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -24,13 +24,15 @@ import org.apache.kafka.common.KafkaException;
 
 public class Utils {
 
-    private static final Pattern HOST_PORT_PATTERN = Pattern.compile("\\[?(.+?)\\]?:(\\d+)");
+    // This matches URIs of formats: host:port and protocol:\\host:port
+    // IPv6 is supported with [ip] pattern
+    private static final Pattern HOST_PORT_PATTERN = Pattern.compile(".*?\\[?([0-9a-z\\-.:]*)\\]?:([0-9]+)");
 
     public static String NL = System.getProperty("line.separator");
 
     /**
      * Turn the given UTF8 byte array into a string
-     * 
+     *
      * @param bytes The byte array
      * @return The string
      */
@@ -44,7 +46,7 @@ public class Utils {
 
     /**
      * Turn a string into a utf8 byte[]
-     * 
+     *
      * @param string The string
      * @return The byte[]
      */
@@ -58,7 +60,7 @@ public class Utils {
 
     /**
      * Read an unsigned integer from the current position in the buffer, incrementing the position by 4 bytes
-     * 
+     *
      * @param buffer The buffer to read from
      * @return The integer read, as a long to avoid signedness
      */
@@ -68,7 +70,7 @@ public class Utils {
 
     /**
      * Read an unsigned integer from the given position without modifying the buffers position
-     * 
+     *
      * @param buffer the buffer to read from
      * @param index the index from which to read the integer
      * @return The integer read, as a long to avoid signedness
@@ -79,12 +81,12 @@ public class Utils {
 
     /**
      * Read an unsigned integer stored in little-endian format from the {@link InputStream}.
-     * 
+     *
      * @param in The stream to read from
      * @return The integer read (MUST BE TREATED WITH SPECIAL CARE TO AVOID SIGNEDNESS)
      */
     public static int readUnsignedIntLE(InputStream in) throws IOException {
-        return (in.read() << 8*0) 
+        return (in.read() << 8*0)
              | (in.read() << 8*1)
              | (in.read() << 8*2)
              | (in.read() << 8*3);
@@ -93,7 +95,7 @@ public class Utils {
     /**
      * Read an unsigned integer stored in little-endian format from a byte array
      * at a given offset.
-     * 
+     *
      * @param buffer The byte array to read from
      * @param offset The position in buffer to read from
      * @return The integer read (MUST BE TREATED WITH SPECIAL CARE TO AVOID SIGNEDNESS)
@@ -107,7 +109,7 @@ public class Utils {
 
     /**
      * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
-     * 
+     *
      * @param buffer The buffer to write to
      * @param value The value to write
      */
@@ -117,7 +119,7 @@ public class Utils {
 
     /**
      * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
-     * 
+     *
      * @param buffer The buffer to write to
      * @param index The position in the buffer at which to begin writing
      * @param value The value to write
@@ -128,7 +130,7 @@ public class Utils {
 
     /**
      * Write an unsigned integer in little-endian format to the {@link OutputStream}.
-     * 
+     *
      * @param out The stream to write to
      * @param value The value to write
      */
@@ -142,7 +144,7 @@ public class Utils {
     /**
      * Write an unsigned integer in little-endian format to a byte array
      * at a given offset.
-     * 
+     *
      * @param buffer The byte array to write to
      * @param offset The position in buffer to write to
      * @param value The value to write
@@ -165,7 +167,7 @@ public class Utils {
 
     /**
      * Get the length for UTF8-encoding a string without encoding it first
-     * 
+     *
      * @param s The string to calculate the length for
      * @return The length when serialized
      */
@@ -211,7 +213,7 @@ public class Utils {
 
     /**
      * Check that the parameter t is not null
-     * 
+     *
      * @param t The object to check
      * @return t if it isn't null
      * @throws NullPointerException if t is null.

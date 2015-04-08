@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -24,19 +24,23 @@ import java.nio.channels._
 import java.util.concurrent.locks.{ReadWriteLock, Lock}
 import java.lang.management._
 import javax.management._
+
+import org.apache.kafka.common.protocol.SecurityProtocol
+
 import scala.collection._
 import scala.collection.mutable
 import java.util.Properties
+import kafka.cluster.EndPoint
 import kafka.common.KafkaException
 import kafka.common.KafkaStorageException
 
 
 /**
  * General helper functions!
- * 
+ *
  * This is for general helper functions that aren't specific to Kafka logic. Things that should have been included in
- * the standard library etc. 
- * 
+ * the standard library etc.
+ *
  * If you are making a new helper function and want to add it to this class please ensure the following:
  * 1. It has documentation
  * 2. It is the most general possible utility, not just the thing you needed in one particular place
@@ -55,104 +59,6 @@ object Utils extends Logging {
     }
 
   /**
-   * Create a daemon thread
-   * @param runnable The runnable to execute in the background
-   * @return The unstarted thread
-   */
-  def daemonThread(runnable: Runnable): Thread =
-    newThread(runnable, true)
-
-  /**
-   * Create a daemon thread
-   * @param name The name of the thread
-   * @param runnable The runnable to execute in the background
-   * @return The unstarted thread
-   */
-  def daemonThread(name: String, runnable: Runnable): Thread = 
-    newThread(name, runnable, true)
-  
-  /**
-   * Create a daemon thread
-   * @param name The name of the thread
-   * @param fun The runction to execute in the thread
-   * @return The unstarted thread
-   */
-  def daemonThread(name: String, fun: () => Unit): Thread = 
-    daemonThread(name, runnable(fun))
-  
-  /**
-   * Create a new thread
-   * @param name The name of the thread
-   * @param runnable The work for the thread to do
-   * @param daemon Should the thread block JVM shutdown?
-   * @return The unstarted thread
-   */
-  def newThread(name: String, runnable: Runnable, daemon: Boolean): Thread = {
-    val thread = new Thread(runnable, name) 
-    thread.setDaemon(daemon)
-    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-      def uncaughtException(t: Thread, e: Throwable) {
-        error("Uncaught exception in thread '" + t.getName + "':", e)
-      } 
-    })
-    thread
-  }
-   
-  /**
-   * Create a new thread
-   * @param runnable The work for the thread to do
-   * @param daemon Should the thread block JVM shutdown?
-   * @return The unstarted thread
-   */
-  def newThread(runnable: Runnable, daemon: Boolean): Thread = {
-    val thread = new Thread(runnable)
-    thread.setDaemon(daemon)
-    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-      def uncaughtException(t: Thread, e: Throwable) {
-        error("Uncaught exception in thread '" + t.getName + "':", e)
-      }
-    })
-    thread
-  }
-  
-  /**
-   * Read the given byte buffer into a byte array
-   */
-  def readBytes(buffer: ByteBuffer): Array[Byte] = readBytes(buffer, 0, buffer.limit)
-
-  /**
-   * Read a byte array from the given offset and size in the buffer
-   */
-  def readBytes(buffer: ByteBuffer, offset: Int, size: Int): Array[Byte] = {
-    val dest = new Array[Byte](size)
-    if(buffer.hasArray) {
-      System.arraycopy(buffer.array, buffer.arrayOffset() + offset, dest, 0, size)
-    } else {
-      buffer.mark()
-      buffer.get(dest)
-      buffer.reset()
-    }
-    dest
-  }
-
-  /**
-   * Read a properties file from the given path
-   * @param filename The path of the file to read
-   */
-   def loadProps(filename: String): Properties = {
-     val props = new Properties()
-     var propStream: InputStream = null
-     try {
-       propStream = new FileInputStream(filename)
-       props.load(propStream)
-     } finally {
-       if(propStream != null)
-         propStream.close
-     }
-     props
-   }
-
-  /**
    * Open a channel for the given file
    */
   def openChannel(file: File, mutable: Boolean): FileChannel = {
@@ -161,7 +67,7 @@ object Utils extends Logging {
     else
       new FileInputStream(file).getChannel()
   }
-  
+
   /**
    * Do the given action and log any exceptions thrown without rethrowing them
    * @param log The log method to use for logging. E.g. logger.warn
@@ -174,56 +80,19 @@ object Utils extends Logging {
       case e: Throwable => log(e.getMessage(), e)
     }
   }
-  
-  /**
-   * Test if two byte buffers are equal. In this case equality means having
-   * the same bytes from the current position to the limit
-   */
-  def equal(b1: ByteBuffer, b2: ByteBuffer): Boolean = {
-    // two byte buffers are equal if their position is the same,
-    // their remaining bytes are the same, and their contents are the same
-    if(b1.position != b2.position)
-      return false
-    if(b1.remaining != b2.remaining)
-      return false
-    for(i <- 0 until b1.remaining)
-      if(b1.get(i) != b2.get(i))
-        return false
-    return true
-  }
-  
-  /**
-   * Translate the given buffer into a string
-   * @param buffer The buffer to translate
-   * @param encoding The encoding to use in translating bytes to characters
-   */
-  def readString(buffer: ByteBuffer, encoding: String = Charset.defaultCharset.toString): String = {
-    val bytes = new Array[Byte](buffer.remaining)
-    buffer.get(bytes)
-    new String(bytes, encoding)
-  }
-  
-  /**
-   * Print an error message and shutdown the JVM
-   * @param message The error message
-   */
-  def croak(message: String) {
-    System.err.println(message)
-    System.exit(1)
-  }
-  
+
   /**
    * Recursively delete the given file/directory and any subfiles (if any exist)
    * @param file The root file at which to begin deleting
    */
   def rm(file: String): Unit = rm(new File(file))
-  
+
   /**
    * Recursively delete the list of files/directories and any subfiles (if any exist)
-   * @param a sequence of files to be deleted
+   * @param files sequence of files to be deleted
    */
   def rm(files: Seq[String]): Unit = files.map(f => rm(new File(f)))
-  
+
   /**
    * Recursively delete the given file/directory and any subfiles (if any exist)
    * @param file The root file at which to begin deleting
@@ -242,7 +111,7 @@ object Utils extends Logging {
 	    file.delete()
 	  }
   }
-  
+
   /**
    * Register the given mbean with the platform mbean server,
    * unregistering any mbean that was there before. Note,
@@ -270,7 +139,7 @@ object Utils extends Logging {
       }
     }
   }
-  
+
   /**
    * Unregister the mbean with the given name, if there is one registered
    * @param name The mbean name to unregister
@@ -283,50 +152,16 @@ object Utils extends Logging {
         mbs.unregisterMBean(objName)
     }
   }
-  
-  /**
-   * Read an unsigned integer from the current position in the buffer, 
-   * incrementing the position by 4 bytes
-   * @param buffer The buffer to read from
-   * @return The integer read, as a long to avoid signedness
-   */
-  def readUnsignedInt(buffer: ByteBuffer): Long = 
-    buffer.getInt() & 0xffffffffL
-  
-  /**
-   * Read an unsigned integer from the given position without modifying the buffers
-   * position
-   * @param buffer the buffer to read from
-   * @param index the index from which to read the integer
-   * @return The integer read, as a long to avoid signedness
-   */
-  def readUnsignedInt(buffer: ByteBuffer, index: Int): Long = 
-    buffer.getInt(index) & 0xffffffffL
-  
-  /**
-   * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
-   * @param buffer The buffer to write to
-   * @param value The value to write
-   */
-  def writetUnsignedInt(buffer: ByteBuffer, value: Long): Unit = 
-    buffer.putInt((value & 0xffffffffL).asInstanceOf[Int])
-  
-  /**
-   * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
-   * @param buffer The buffer to write to
-   * @param index The position in the buffer at which to begin writing
-   * @param value The value to write
-   */
-  def writeUnsignedInt(buffer: ByteBuffer, index: Int, value: Long): Unit = 
-    buffer.putInt(index, (value & 0xffffffffL).asInstanceOf[Int])
-  
+
+
+
   /**
    * Compute the CRC32 of the byte array
    * @param bytes The array to compute the checksum for
    * @return The CRC32
    */
   def crc32(bytes: Array[Byte]): Long = crc32(bytes, 0, bytes.length)
-  
+
   /**
    * Compute the CRC32 of the segment of the byte array given by the specificed size and offset
    * @param bytes The bytes to checksum
@@ -339,41 +174,9 @@ object Utils extends Logging {
     crc.update(bytes, offset, size)
     crc.getValue()
   }
-  
+
   /**
-   * Compute the hash code for the given items
-   */
-  def hashcode(as: Any*): Int = {
-    if(as == null)
-      return 0
-    var h = 1
-    var i = 0
-    while(i < as.length) {
-      if(as(i) != null) {
-        h = 31 * h + as(i).hashCode
-        i += 1
-      }
-    }
-    return h
-  }
-  
-  /**
-   * Group the given values by keys extracted with the given function
-   */
-  def groupby[K,V](vals: Iterable[V], f: V => K): Map[K,List[V]] = {
-    val m = new mutable.HashMap[K, List[V]]
-    for(v <- vals) {
-      val k = f(v)
-      m.get(k) match {
-        case Some(l: List[V]) => m.put(k, v :: l)
-        case None => m.put(k, List(v))
-      }
-    } 
-    m
-  }
-  
-  /**
-   * Read some bytes into the provided buffer, and return the number of bytes read. If the 
+   * Read some bytes into the provided buffer, and return the number of bytes read. If the
    * channel has been closed or we get -1 on the read for any reason, throw an EOFException
    */
   def read(channel: ReadableByteChannel, buffer: ByteBuffer): Int = {
@@ -381,41 +184,25 @@ object Utils extends Logging {
       case -1 => throw new EOFException("Received -1 when reading from channel, socket has likely been closed.")
       case n: Int => n
     }
-  } 
-  
-  /**
-   * Throw an exception if the given value is null, else return it. You can use this like:
-   * val myValue = Utils.notNull(expressionThatShouldntBeNull)
-   */
-  def notNull[V](v: V) = {
-    if(v == null)
-      throw new KafkaException("Value cannot be null.")
-    else
-      v
-  }
-
-  /**
-   * Get the stack trace from an exception as a string
-   */
-  def stackTrace(e: Throwable): String = {
-    val sw = new StringWriter
-    val pw = new PrintWriter(sw)
-    e.printStackTrace(pw)
-    sw.toString()
   }
 
   /**
    * This method gets comma separated values which contains key,value pairs and returns a map of
    * key value pairs. the format of allCSVal is key1:val1, key2:val2 ....
+   * Also supports strings with multiple ":" such as IpV6 addresses, taking the last occurrence
+   * of the ":" in the pair as the split, eg a:b:c:val1, d:e:f:val2 => a:b:c -> val1, d:e:f -> val2
    */
   def parseCsvMap(str: String): Map[String, String] = {
     val map = new mutable.HashMap[String, String]
-    if("".equals(str))
-      return map    
-    val keyVals = str.split("\\s*,\\s*").map(s => s.split("\\s*:\\s*"))
-    keyVals.map(pair => (pair(0), pair(1))).toMap
+    if ("".equals(str))
+      return map
+    val keyVals = str.split("\\s*,\\s*").map(s => {
+      val lio = s.lastIndexOf(":")
+      Pair(s.substring(0,lio).trim, s.substring(lio + 1).trim)
+    })
+    keyVals.toMap
   }
-  
+
   /**
    * Parse a comma separated string into a sequence of strings.
    * Whitespace surrounding the comma will be removed.
@@ -429,8 +216,43 @@ object Utils extends Logging {
   }
 
   /**
-   * Create an instance of the class with the given class name
+    * Print an error message and shutdown the JVM
+    * @param message The error message
+    */
+  def croak(message: String) {
+    System.err.println(message)
+    System.exit(1)
+  }
+
+  /**
+   * Turn {@linkplain java.util.Properties} with default values into a {@linkplain java.util.Map}. Following example
+   * illustrates difference from the cast
+   * <pre>
+   * val defaults = new Properties()
+   * defaults.put("foo", "bar")
+   * val props = new Properties(defaults)
+   *
+   * props.getProperty("foo") // "bar"
+   * props.get("foo") // null
+   * evaluateDefaults(props).get("foo") // "bar"
+   * </pre>
+   *
+   * @param props properties to evaluate
+   * @return new java.util.Map instance
    */
+  def evaluateDefaults(props: Properties): java.util.Map[String, String] = {
+    import java.util._
+    import JavaConversions.asScalaSet
+    val evaluated = new HashMap[String, String]()
+    for (name <- props.stringPropertyNames()) {
+      evaluated.put(name, props.getProperty(name))
+    }
+    evaluated
+  }
+
+  /**
+    * Create an instance of the class with the given class name
+    */
   def createObject[T<:AnyRef](className: String, args: AnyRef*): T = {
     val klass = Class.forName(className).asInstanceOf[Class[T]]
     val constructor = klass.getConstructor(args.map(_.getClass): _*)
@@ -438,15 +260,15 @@ object Utils extends Logging {
   }
 
   /**
-   * Is the given string null or empty ("")?
-   */
+    * Is the given string null or empty ("")?
+    */
   def nullOrEmpty(s: String): Boolean = s == null || s.equals("")
 
   /**
-   * Create a circular (looping) iterator over a collection.
-   * @param coll An iterable over the underlying collection.
-   * @return A circular iterator over the collection.
-   */
+    * Create a circular (looping) iterator over a collection.
+    * @param coll An iterable over the underlying collection.
+    * @return A circular iterator over the collection.
+    */
   def circularIterator[T](coll: Iterable[T]) = {
     val stream: Stream[T] =
       for (forever <- Stream.continually(1); t <- coll) yield t
@@ -454,29 +276,14 @@ object Utils extends Logging {
   }
 
   /**
-   * Attempt to read a file as a string
-   */
-  def readFileAsString(path: String, charset: Charset = Charset.defaultCharset()): String = {
-    val stream = new FileInputStream(new File(path))
-    try {
-      val fc = stream.getChannel()
-      val bb = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size())
-      charset.decode(bb).toString()
-    }
-    finally {
-      stream.close()
-    }
-  }
-  
-  /**
-   * Get the absolute value of the given number. If the number is Int.MinValue return 0.
-   * This is different from java.lang.Math.abs or scala.math.abs in that they return Int.MinValue (!).
-   */
+    * Get the absolute value of the given number. If the number is Int.MinValue return 0.
+    * This is different from java.lang.Math.abs or scala.math.abs in that they return Int.MinValue (!).
+    */
   def abs(n: Int) = if(n == Integer.MIN_VALUE) 0 else math.abs(n)
 
   /**
-   * Replace the given string suffix with the new suffix. If the string doesn't end with the given suffix throw an exception.
-   */
+    * Replace the given string suffix with the new suffix. If the string doesn't end with the given suffix throw an exception.
+    */
   def replaceSuffix(s: String, oldSuffix: String, newSuffix: String): String = {
     if(!s.endsWith(oldSuffix))
       throw new IllegalArgumentException("Expected string to end with '%s' but string is '%s'".format(oldSuffix, s))
@@ -484,11 +291,11 @@ object Utils extends Logging {
   }
 
   /**
-   * Create a file with the given path
-   * @param path The path to create
-   * @throws KafkaStorageException If the file create fails
-   * @return The created file
-   */
+    * Create a file with the given path
+    * @param path The path to create
+    * @throws KafkaStorageException If the file create fails
+    * @return The created file
+    */
   def createFile(path: String): File = {
     val f = new File(path)
     val created = f.createNewFile()
@@ -496,26 +303,26 @@ object Utils extends Logging {
       throw new KafkaStorageException("Failed to create file %s.".format(path))
     f
   }
-  
+
   /**
-   * Turn a properties map into a string
-   */
+    * Turn a properties map into a string
+    */
   def asString(props: Properties): String = {
     val writer = new StringWriter()
     props.store(writer, "")
     writer.toString
   }
-  
+
   /**
-   * Read some properties with the given default values
-   */
+    * Read some properties with the given default values
+    */
   def readProps(s: String, defaults: Properties): Properties = {
     val reader = new StringReader(s)
     val props = new Properties(defaults)
     props.load(reader)
     props
   }
-  
+
   /**
    * Read a big-endian integer from a byte array
    */
@@ -525,7 +332,7 @@ object Utils extends Logging {
     ((bytes(offset + 2) & 0xFF) << 8) |
     (bytes(offset + 3) & 0xFF)
   }
-  
+
   /**
    * Execute the given function inside the lock
    */
@@ -564,7 +371,7 @@ object Utils extends Logging {
        */
       case c if ((c >= '\u0000' && c <= '\u001f') || (c >= '\u007f' && c <= '\u009f')) => "\\u%04x".format(c: Int)
       case c => c
-    }.mkString 
+    }.mkString
   }
 
   /**
@@ -576,4 +383,182 @@ object Utils extends Logging {
       .filter{ case (k,l) => (l > 1) }
       .keys
   }
+
+  def listenerListToEndPoints(listeners: String): immutable.Map[SecurityProtocol, EndPoint] = {
+    val listenerList = parseCsvList(listeners)
+    listenerList.map(listener => EndPoint.createEndPoint(listener)).map(ep => ep.protocolType -> ep).toMap
+  }
+
+  /**
+    * Read a properties file from the given path
+    * @param filename The path of the file to read
+    */
+  def loadProps(filename: String): Properties = {
+    val props = new Properties()
+    var propStream: InputStream = null
+    try {
+      propStream = new FileInputStream(filename)
+      props.load(propStream)
+    } finally {
+      if(propStream != null)
+        propStream.close
+    }
+    props
+  }
+
+  /**
+    * Get the stack trace from an exception as a string
+    */
+  def stackTrace(e: Throwable): String = {
+    val sw = new StringWriter
+    val pw = new PrintWriter(sw)
+    e.printStackTrace(pw)
+    sw.toString()
+  }
+
+  /**
+    * Attempt to read a file as a string
+    */
+  def readFileAsString(path: String, charset: Charset = Charset.defaultCharset()): String = {
+    val stream = new FileInputStream(new File(path))
+    try {
+      val fc = stream.getChannel()
+      val bb = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size())
+      charset.decode(bb).toString()
+    }
+    finally {
+      stream.close()
+    }
+  }
+
+  /**
+    * Create a daemon thread
+    * @param runnable The runnable to execute in the background
+    * @return The unstarted thread
+    */
+  def daemonThread(runnable: Runnable): Thread =
+    newThread(runnable, true)
+
+  /**
+    * Create a daemon thread
+    * @param name The name of the thread
+    * @param runnable The runnable to execute in the background
+    * @return The unstarted thread
+    */
+  def daemonThread(name: String, runnable: Runnable): Thread =
+    newThread(name, runnable, true)
+
+  /**
+    * Create a daemon thread
+    * @param name The name of the thread
+    * @param fun The runction to execute in the thread
+    * @return The unstarted thread
+    */
+  def daemonThread(name: String, fun: () => Unit): Thread =
+    daemonThread(name, runnable(fun))
+
+  /**
+    * Create a new thread
+    * @param name The name of the thread
+    * @param runnable The work for the thread to do
+    * @param daemon Should the thread block JVM shutdown?
+    * @return The unstarted thread
+    */
+  def newThread(name: String, runnable: Runnable, daemon: Boolean): Thread = {
+    val thread = new Thread(runnable, name)
+    thread.setDaemon(daemon)
+    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      def uncaughtException(t: Thread, e: Throwable) {
+        error("Uncaught exception in thread '" + t.getName + "':", e)
+      }
+    })
+    thread
+  }
+
+  /**
+    * Create a new thread
+    * @param runnable The work for the thread to do
+    * @param daemon Should the thread block JVM shutdown?
+    * @return The unstarted thread
+    */
+  def newThread(runnable: Runnable, daemon: Boolean): Thread = {
+    val thread = new Thread(runnable)
+    thread.setDaemon(daemon)
+    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      def uncaughtException(t: Thread, e: Throwable) {
+        error("Uncaught exception in thread '" + t.getName + "':", e)
+      }
+    })
+    thread
+  }
+
+  /**
+    * Read the given byte buffer into a byte array
+    */
+  def readBytes(buffer: ByteBuffer): Array[Byte] = readBytes(buffer, 0, buffer.limit)
+
+
+  /**
+    * Read a byte array from the given offset and size in the buffer
+    */
+  def readBytes(buffer: ByteBuffer, offset: Int, size: Int): Array[Byte] = {
+    val dest = new Array[Byte](size)
+    if(buffer.hasArray) {
+      System.arraycopy(buffer.array, buffer.arrayOffset() + offset, dest, 0, size)
+    } else {
+      buffer.mark()
+      buffer.get(dest)
+      buffer.reset()
+    }
+    dest
+  }
+
+
+  /**
+    * Translate the given buffer into a string
+    * @param buffer The buffer to translate
+    * @param encoding The encoding to use in translating bytes to characters
+    */
+  def readString(buffer: ByteBuffer, encoding: String = Charset.defaultCharset.toString): String = {
+    val bytes = new Array[Byte](buffer.remaining)
+    buffer.get(bytes)
+    new String(bytes, encoding)
+  }
+
+  /**
+    * Read an unsigned integer from the current position in the buffer,
+    * incrementing the position by 4 bytes
+    * @param buffer The buffer to read from
+    * @return The integer read, as a long to avoid signedness
+    */
+  def readUnsignedInt(buffer: ByteBuffer): Long =
+    buffer.getInt() & 0xffffffffL
+
+  /**
+    * Read an unsigned integer from the given position without modifying the buffers
+    * position
+    * @param buffer the buffer to read from
+    * @param index the index from which to read the integer
+    * @return The integer read, as a long to avoid signedness
+    */
+  def readUnsignedInt(buffer: ByteBuffer, index: Int): Long =
+    buffer.getInt(index) & 0xffffffffL
+
+  /**
+    * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
+    * @param buffer The buffer to write to
+    * @param value The value to write
+    */
+  def writetUnsignedInt(buffer: ByteBuffer, value: Long): Unit =
+    buffer.putInt((value & 0xffffffffL).asInstanceOf[Int])
+
+  /**
+    * Write the given long value as a 4 byte unsigned integer. Overflow is ignored.
+    * @param buffer The buffer to write to
+    * @param index The position in the buffer at which to begin writing
+    * @param value The value to write
+    */
+  def writeUnsignedInt(buffer: ByteBuffer, index: Int, value: Long): Unit =
+    buffer.putInt(index, (value & 0xffffffffL).asInstanceOf[Int])
+
 }

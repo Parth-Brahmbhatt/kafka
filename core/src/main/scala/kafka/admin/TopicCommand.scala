@@ -25,25 +25,24 @@ import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.ZkNodeExistsException
 import scala.collection._
 import scala.collection.JavaConversions._
-import kafka.cluster.Broker
 import kafka.log.LogConfig
 import kafka.consumer.Whitelist
 import kafka.server.OffsetManager
-import org.apache.kafka.common.utils.Utils.formatAddress
+
 
 
 object TopicCommand {
 
   def main(args: Array[String]): Unit = {
-    
+
     val opts = new TopicCommandOptions(args)
-    
+
     if(args.length == 0)
       CommandLineUtils.printUsageAndDie(opts.parser, "Create, delete, describe, or change a topic.")
-    
+
     // should have exactly one action
     val actions = Seq(opts.createOpt, opts.listOpt, opts.alterOpt, opts.describeOpt, opts.deleteOpt).count(opts.options.has _)
-    if(actions != 1) 
+    if(actions != 1)
       CommandLineUtils.printUsageAndDie(opts.parser, "Command must include exactly one action: --list, --describe, --create, --alter or --delete")
 
     opts.checkArgs()
@@ -121,7 +120,7 @@ object TopicCommand {
       }
     }
   }
-  
+
   def listTopics(zkClient: ZkClient, opts: TopicCommandOptions) {
     val topics = getTopics(zkClient, opts)
     for(topic <- topics) {
@@ -148,7 +147,7 @@ object TopicCommand {
           println("Topic %s is already marked for deletion.".format(topic))
         case e2: Throwable =>
           throw new AdminOperationException("Error while deleting topic %s".format(topic))
-      }    
+      }
     }
   }
 
@@ -193,9 +192,8 @@ object TopicCommand {
       }
     }
   }
-  
-  def formatBroker(broker: Broker) = broker.id + " (" + formatAddress(broker.host, broker.port) + ")"
-  
+
+
   def parseTopicConfigsToBeAdded(opts: TopicCommandOptions): Properties = {
     val configsToBeAdded = opts.options.valuesOf(opts.configOpt).map(_.split("""\s*=\s*"""))
     require(configsToBeAdded.forall(config => config.length == 2),
@@ -232,7 +230,7 @@ object TopicCommand {
     }
     ret.toMap
   }
-  
+
   class TopicCommandOptions(args: Array[String]) {
     val parser = new OptionParser
     val zkConnectOpt = parser.accepts("zookeeper", "REQUIRED: The connection string for the zookeeper connection in the form host:port. " +
@@ -252,8 +250,8 @@ object TopicCommand {
                          .describedAs("topic")
                          .ofType(classOf[String])
     val nl = System.getProperty("line.separator")
-    val configOpt = parser.accepts("config", "A topic configuration override for the topic being created or altered."  + 
-                                                         "The following is a list of valid configurations: " + nl + LogConfig.ConfigNames.map("\t" + _).mkString(nl) + nl +  
+    val configOpt = parser.accepts("config", "A topic configuration override for the topic being created or altered."  +
+                                                         "The following is a list of valid configurations: " + nl + LogConfig.ConfigNames.map("\t" + _).mkString(nl) + nl +
                                                          "See the Kafka documentation for full details on the topic configs.")
                           .withRequiredArg
                           .describedAs("name=value")
@@ -308,5 +306,5 @@ object TopicCommand {
         allTopicLevelOpts -- Set(describeOpt) + reportUnderReplicatedPartitionsOpt + reportUnavailablePartitionsOpt)
     }
   }
-  
+
 }

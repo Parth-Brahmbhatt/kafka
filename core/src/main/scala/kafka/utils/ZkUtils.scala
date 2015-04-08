@@ -17,7 +17,7 @@
 
 package kafka.utils
 
-import kafka.cluster.{Broker, Cluster}
+import kafka.cluster._
 import kafka.consumer.{ConsumerThreadId, TopicCount}
 import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.{ZkNodeExistsException, ZkNoNodeException,
@@ -33,7 +33,10 @@ import kafka.controller.KafkaController
 import scala.Some
 import kafka.controller.LeaderIsrAndControllerEpoch
 import kafka.common.TopicAndPartition
+import kafka.cluster.BrokerEndPoint
 import scala.collection
+import org.apache.kafka.common.protocol.SecurityProtocol
+
 
 object ZkUtils extends Logging {
   val ConsumersPath = "/consumers"
@@ -80,6 +83,10 @@ object ZkUtils extends Logging {
   def getAllBrokersInCluster(zkClient: ZkClient): Seq[Broker] = {
     val brokerIds = ZkUtils.getChildrenParentMayNotExist(zkClient, ZkUtils.BrokerIdsPath).sorted
     brokerIds.map(_.toInt).map(getBrokerInfo(zkClient, _)).filter(_.isDefined).map(_.get)
+  }
+
+  def getAllBrokerEndPointsForChannel(zkClient: ZkClient, protocolType: SecurityProtocol): Seq[BrokerEndPoint] = {
+    getAllBrokersInCluster(zkClient).map(_.getBrokerEndPoint(protocolType))
   }
 
   def getLeaderAndIsrForPartition(zkClient: ZkClient, topic: String, partition: Int):Option[LeaderAndIsr] = {
@@ -158,12 +165,28 @@ object ZkUtils extends Logging {
     }
   }
 
-  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, timeout: Int, jmxPort: Int) {
+  /**
+    * Register brokers with v2 json format (which includes multiple endpoints).
+    * This format also includes default endpoints for compatibility with older clients.
+    * @param zkClient
+    * @param id
+    * @param advertisedEndpoints
+    * @param timeout
+    * @param jmxPort
+    */
+  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, advertisedEndpoints: immutable.Map[SecurityProtocol, EndPoint], timeout: Int, jmxPort: Int) {
     val brokerIdPath = ZkUtils.BrokerIdsPath + "/" + id
     val timestamp = SystemTime.milliseconds.toString
-    val brokerInfo = Json.encode(Map("version" -> 1, "host" -> host, "port" -> port, "jmx_port" -> jmxPort, "timestamp" -> timestamp))
-    val expectedBroker = new Broker(id, host, port)
 
+    val brokerInfo = Json.encode(Map("version" -> 2, "host" -> host, "port" -> port, "endpoints"->advertisedEndpoints.values.map(_.connectionString).toArray, "jmx_port" -> jmxPort, "timestamp" -> timestamp))
+    val expectedBroker = new Broker(id, advertisedEndpoints)
+
+    registerBrokerInZk(zkClient, brokerIdPath, brokerInfo, expectedBroker, timeout)
+
+    info("Registered broker %d at path %s with addresses: %s".format(id, brokerIdPath, advertisedEndpoints.mkString(",")))
+  }
+
+  private def registerBrokerInZk(zkClient: ZkClient, brokerIdPath: String, brokerInfo: String, expectedBroker: Broker, timeout: Int) {
     try {
       createEphemeralPathExpectConflictHandleZKBug(zkClient, brokerIdPath, brokerInfo, expectedBroker,
         (brokerString: String, broker: Any) => Broker.createBroker(broker.asInstanceOf[Broker].id, brokerString).equals(broker.asInstanceOf[Broker]),
@@ -176,8 +199,8 @@ object ZkUtils extends Logging {
           + "else you have shutdown this broker and restarted it faster than the zookeeper "
           + "timeout so it appears to be re-registering.")
     }
-    info("Registered broker %d at path %s with address %s:%d.".format(id, brokerIdPath, host, port))
   }
+
 
   def getConsumerPartitionOwnerPath(group: String, topic: String, partition: Int): String = {
     val topicDirs = new ZKGroupTopicDirs(group, topic)

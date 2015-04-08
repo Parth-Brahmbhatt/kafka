@@ -19,13 +19,13 @@ package kafka.javaapi
 
 import java.nio.ByteBuffer
 
-import kafka.cluster.Broker
+import kafka.cluster.BrokerEndPoint
 
 class ConsumerMetadataResponse(private val underlying: kafka.api.ConsumerMetadataResponse) {
 
   def errorCode = underlying.errorCode
 
-  def coordinator: Broker = {
+  def coordinator: BrokerEndPoint = {
     import kafka.javaapi.Implicits._
     underlying.coordinatorOpt
   }
