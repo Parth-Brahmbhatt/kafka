@@ -53,7 +53,7 @@ object Json extends Logging {
     obj match {
       case null => "null"
       case b: Boolean => b.toString
-      case s: String => "\"" + s.replace("\"","\\\"") + "\""
+      case s: String => "\"" + s + "\""
       case n: Number => n.toString
       case m: Map[_, _] => 
         "{" + 
