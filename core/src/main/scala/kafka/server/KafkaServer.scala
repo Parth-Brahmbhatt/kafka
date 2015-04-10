@@ -74,8 +74,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
   var kafkaHealthcheck: KafkaHealthcheck = null
   val metadataCache: MetadataCache = new MetadataCache(config.brokerId)
 
-
-
   var zkClient: ZkClient = null
   val correlationId: AtomicInteger = new AtomicInteger(0)
   val brokerMetaPropsFile = "meta.properties"
@@ -150,13 +148,15 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         /*initialize topic config cache*/
         topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
 
-        /* Get the authorizer */
-        val authorizer: Authorizer = if (config.authorizerClassName != null && !config.authorizerClassName.isEmpty)
-          CoreUtils.createObject(config.authorizerClassName)
-        else
-          null
-        if(authorizer != null) {
-          authorizer.initialize(config, topicConfigCache)
+        /* Get the authorizer and initialize it if one is specified.*/
+        val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
+              Option(CoreUtils.createObject(config.authorizerClassName))
+            } else {
+              None
+            }
+
+        if(authorizer.isDefined) {
+          authorizer.get.initialize(config, topicConfigCache)
         }
 
         /* start processing requests */

@@ -54,7 +54,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     //user1 has DESCRIBE access from all hosts.
     val acl4: Acl = new Acl(user1, PermissionType.ALLOW, Set[String](Acl.wildCardHost), Set[Operation](Operation.DESCRIBE))
 
-    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](acl1, acl2, acl3, acl4), overrideProperties = null)
+    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](acl1, acl2, acl3, acl4))
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig).anyTimes()
     EasyMock.replay(clusterAclCache, topicConfigCache)
 
@@ -82,7 +82,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     val allowAll: Acl = Acl.allowAllAcl
     val denyAcl: Acl = new Acl(user, PermissionType.DENY, Set[String](host), Set[Operation](Operation.ALL))
 
-    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](allowAll, denyAcl), overrideProperties = null)
+    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](allowAll, denyAcl))
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig).anyTimes()
     EasyMock.replay(clusterAclCache, topicConfigCache)
 
@@ -94,7 +94,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
   @Test
   def testAllowAllAccess(): Unit = {
     val allowAllAcl: Acl = Acl.allowAllAcl
-    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](Acl.allowAllAcl), overrideProperties = null)
+    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = "alice", logConfig = null, acls = Set[Acl](Acl.allowAllAcl))
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig).anyTimes()
     EasyMock.replay(clusterAclCache, topicConfigCache)
 
@@ -107,7 +107,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
   @Test
   def testOwnerHasAccess(): Unit = {
     val denyAllAcl: Acl = new Acl(Acl.wildCardPrincipal, PermissionType.DENY, Set[String](Acl.wildCardHost), Set[Operation](Operation.ALL))
-    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl](denyAllAcl), overrideProperties = null)
+    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl](denyAllAcl))
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig).anyTimes()
     EasyMock.replay(clusterAclCache, topicConfigCache)
 
@@ -119,7 +119,7 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
   @Test
   def testSuperUserHasAccess(): Unit = {
     val denyAllAcl: Acl = new Acl(Acl.wildCardPrincipal, PermissionType.DENY, Set[String](Acl.wildCardHost), Set[Operation](Operation.ALL))
-    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl](denyAllAcl), overrideProperties = null)
+    val topicConfig: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl](denyAllAcl))
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig).anyTimes()
     EasyMock.replay(clusterAclCache, topicConfigCache)
 
@@ -129,15 +129,14 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     assertTrue("superuser always has access, no matter what acls.", simpleAclAuthorizer.authorize(session1, Operation.READ, resource))
     assertTrue("superuser always has access, no matter what acls.", simpleAclAuthorizer.authorize(session2, Operation.READ, resource))
 
-
     EasyMock.verify(clusterAclCache, topicConfigCache)
   }
 
 
   @Test
   def testNoAclFound(): Unit = {
-    val topicConfig1: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = null, overrideProperties = null)
-    val topicConfig2: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl](), overrideProperties = null)
+    val topicConfig1: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = null)
+    val topicConfig2: TopicConfig = new TopicConfig(version = 1, owner = testPrincipal.getName, logConfig = null, acls = Set[Acl]())
     
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig1).times(2)
     EasyMock.expect(topicConfigCache.getTopicConfig(resource)).andReturn(topicConfig2).times(2)

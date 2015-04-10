@@ -25,17 +25,16 @@ object TopicConfig {
     val logConfig: LogConfig = LogConfig.fromProps(defaultProperties, overrideProperties)
     val acls: Set[Acl] = Acl.fromJson(overrideProperties.getProperty(aclKey))
 
-    new TopicConfig(version, owner, logConfig, acls, overrideProperties)
+    new TopicConfig(version, owner, logConfig, acls)
   }
 }
 
-class TopicConfig(val version: Int, val owner: String,val logConfig: LogConfig,val acls: Set[Acl], val overrideProperties: Properties) {
+class TopicConfig(val version: Int, val owner: String,val logConfig: LogConfig,val acls: Set[Acl]) {
   def toProps(): Properties = {
     val properties: Properties = new Properties()
     properties.put(TopicConfig.ownerKey, owner)
     properties.put(TopicConfig.aclKey, Json.encode(acls.map(acl => acl.toMap()).toList))
     properties.putAll(logConfig.toProps)
-    properties.putAll(overrideProperties)
 
     properties
   }

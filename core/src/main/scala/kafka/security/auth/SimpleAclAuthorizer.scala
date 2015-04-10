@@ -88,7 +88,6 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     superUsers = kafkaConfig.superUser match {
       case null => Set.empty[String]
       case (str: String) => str.split(",").map(s => s.trim).toSet
-      case _ => throw new IllegalArgumentException("expected a comma seperated list of superusers , found:" + kafkaConfig.superUser)
     }
     configCache = topicConfigCache
   }

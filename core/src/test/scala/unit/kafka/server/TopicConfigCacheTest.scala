@@ -33,7 +33,6 @@ class TopicConfigCacheTest extends JUnit3Suite with KafkaServerTestHarness {
     var config: TopicConfig = this.servers(0).topicConfigCache.getTopicConfig("not-existing-topic")
     assertNull("for non existing topic owner should be null.",config.owner)
     assertTrue("for non existing topic acls should be empty.",config.acls.isEmpty)
-    assertTrue("for non existing topic override property should be empty. ",config.overrideProperties.isEmpty)
 
     //newly created topics should be populated in cache on first request.
     val oldVal = 100000
