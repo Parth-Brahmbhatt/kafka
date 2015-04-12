@@ -315,4 +315,34 @@ public class Utils {
                 ? "[" + host + "]:" + port // IPv6
                 : host + ":" + port;
     }
+
+
+    /**
+     * Converts 4 bytes to an int at the specified offset in the given byte array
+     * @param buf the byte array containing the 4 bytes to be converted to int
+     * @param offset  the offset in the byte array
+     * @return the int value of the 4 bytes.
+     */
+    public static int toInt(byte[] buf, int off) {
+        int lg = (buf[off] & 0xff) << 24;
+        lg |= (buf[off+1] & 0xff) << 16;
+        lg |= (buf[off+2] & 0xff) << 8;
+        lg |= (buf[off+3] & 0xff);
+        return lg;
+    }
+
+    /**
+     * Converts the specified int value to 4 bytes. The bytes are put into the specified
+     * byte array at given offset location.
+     * @param value the int value conver into 4 bytes.
+     * @param buf the byte array to put the resulting 4 bytes
+     * @param offset in the byte array
+     */
+    public static void writeInt(int value, byte[] buf, int off) {
+        buf[off] = (byte)((value >>> 24) & 0xFF);
+        buf[off+1] = (byte)((value >>> 16) & 0xFF);
+        buf[off+2] = (byte)((value >>>  8) & 0xFF);
+        buf[off+3] = (byte)((value >>>  0) & 0xFF);
+    }
+
 }

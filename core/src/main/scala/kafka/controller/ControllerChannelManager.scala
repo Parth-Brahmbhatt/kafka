@@ -84,7 +84,8 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
     val channel = new BlockingChannel(brokerEndPoint.host, brokerEndPoint.port,
       BlockingChannel.UseDefaultBufferSize,
       BlockingChannel.UseDefaultBufferSize,
-      config.controllerSocketTimeoutMs)
+      config.controllerSocketTimeoutMs,
+      config.interBrokerSecurityProtocol)
     val requestThread = new RequestSendThread(config.brokerId, controllerContext, broker, messageQueue, channel)
     requestThread.setDaemon(false)
     brokerStateInfo.put(broker.id, new ControllerBrokerStateInfo(channel, broker, messageQueue, requestThread))

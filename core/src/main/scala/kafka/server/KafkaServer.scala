@@ -29,9 +29,11 @@ import org.I0Itec.zkclient.ZkClient
 import kafka.controller.{ControllerStats, KafkaController}
 import kafka.cluster.{EndPoint, Broker}
 import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
-import kafka.common.ErrorMapping
+import kafka.common.{ErrorMapping, KerberosLoginManager}
 import kafka.network.{Receive, BlockingChannel, SocketServer}
 import kafka.metrics.KafkaMetricsGroup
+
+import org.apache.kafka.common.security.AuthUtils
 import com.yammer.metrics.core.Gauge
 
 /**
@@ -80,6 +82,11 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       /* setup zookeeper */
       zkClient = initZk()
+
+      /* login to kerberos */
+      if(config.kerberosEnable) {
+        KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_SERVER)
+      }
 
       /* start log manager */
       logManager = createLogManager(zkClient, brokerState)
@@ -206,11 +213,13 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                 if (channel != null) {
                   channel.disconnect()
                 }
+                info("hello broker protocol "+config.interBrokerSecurityProtocol)
                 channel = new BlockingChannel(broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).host,
                   broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).port,
                   BlockingChannel.UseDefaultBufferSize,
                   BlockingChannel.UseDefaultBufferSize,
-                  config.controllerSocketTimeoutMs)
+                  config.controllerSocketTimeoutMs,
+                  config.interBrokerSecurityProtocol)
                 channel.connect()
                 prevController = broker
               }
@@ -293,6 +302,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         if(zkClient != null)
           Utils.swallow(zkClient.close())
 
+        Utils.swallow(KerberosLoginManager.shutdown())
         brokerState.newState(NotRunning)
         shutdownLatch.countDown()
         startupComplete.set(false)

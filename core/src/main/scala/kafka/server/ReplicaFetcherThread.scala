@@ -23,11 +23,13 @@ import kafka.log.LogConfig
 import kafka.message.ByteBufferMessageSet
 import kafka.api.{OffsetRequest, FetchResponsePartitionData}
 import kafka.common.{KafkaStorageException, TopicAndPartition}
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 class ReplicaFetcherThread(name:String,
                            sourceBroker: BrokerEndPoint,
                            brokerConfig: KafkaConfig,
-                           replicaMgr: ReplicaManager)
+                           replicaMgr: ReplicaManager,
+                           protocol: SecurityProtocol)
   extends AbstractFetcherThread(name = name,
                                 clientId = name,
                                 sourceBroker = sourceBroker,
@@ -37,7 +39,8 @@ class ReplicaFetcherThread(name:String,
                                 fetcherBrokerId = brokerConfig.brokerId,
                                 maxWait = brokerConfig.replicaFetchWaitMaxMs,
                                 minBytes = brokerConfig.replicaFetchMinBytes,
-                                isInterruptible = false) {
+                                isInterruptible = false,
+                                protocol) {
 
   // process fetched data
   def processPartitionData(topicAndPartition: TopicAndPartition, fetchOffset: Long, partitionData: FetchResponsePartitionData) {

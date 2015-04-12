@@ -68,7 +68,7 @@ object ConsoleProducer {
             props.put("compression.codec", config.compressionCodec)
             props.put("producer.type", if(config.sync) "sync" else "async")
             props.put("batch.num.messages", config.batchSize.toString)
-            props.put("message.send.max.retries", config.messageSendMaxRetries.toString)
+            props.put("message.send.max.retries", "1")
             props.put("retry.backoff.ms", config.retryBackoffMs.toString)
             props.put("queue.buffering.max.ms", config.sendTimeout.toString)
             props.put("queue.buffering.max.messages", config.queueSize.toString)
@@ -79,6 +79,7 @@ object ConsoleProducer {
             props.put("serializer.class", config.valueEncoderClass)
             props.put("send.buffer.bytes", config.socketBuffer.toString)
             props.put("topic.metadata.refresh.interval.ms", config.metadataExpiryMs.toString)
+            props.put("kerberos.enable", config.kerberosEnable.toString)
             props.put("client.id", "console-producer")
 
             new OldProducer(props)
@@ -206,6 +207,11 @@ object ConsoleProducer {
       .describedAs("size")
       .ofType(classOf[java.lang.Integer])
       .defaultsTo(1024*100)
+    val kerberosEnableOpt = parser.accepts("kerberos-enable", "Enable kerberos.")
+      .withRequiredArg
+      .describedAs("kerberos.enable")
+      .ofType(classOf[java.lang.Boolean])
+      .defaultsTo(false)
     val propertyOpt = parser.accepts("property", "A mechanism to pass user-defined properties in the form key=value to the message reader. " +
       "This allows custom configuration for a user-defined message reader.")
       .withRequiredArg
@@ -248,6 +254,7 @@ object ConsoleProducer {
     val maxPartitionMemoryBytes = options.valueOf(maxPartitionMemoryBytesOpt)
     val metadataExpiryMs = options.valueOf(metadataExpiryMsOpt)
     val metadataFetchTimeoutMs = options.valueOf(metadataFetchTimeoutMsOpt)
+    val kerberosEnable = options.valueOf(kerberosEnableOpt)
   }
 
   trait MessageReader {

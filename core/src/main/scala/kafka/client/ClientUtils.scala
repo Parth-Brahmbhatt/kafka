@@ -26,10 +26,10 @@ import kafka.common.{ErrorMapping, KafkaException}
 import kafka.utils.{Utils, Logging}
 import java.util.Properties
 import util.Random
- import kafka.network.BlockingChannel
- import kafka.utils.ZkUtils._
- import org.I0Itec.zkclient.ZkClient
- import java.io.IOException
+import kafka.network.BlockingChannel
+import kafka.utils.ZkUtils._
+import org.I0Itec.zkclient.ZkClient
+import java.io.IOException
 import org.apache.kafka.common.utils.Utils.{getHost, getPort}
 
  /**
@@ -86,11 +86,12 @@ object ClientUtils extends Logging{
    * @return topic metadata response
    */
   def fetchTopicMetadata(topics: Set[String], brokers: Seq[BrokerEndPoint], clientId: String, timeoutMs: Int,
-                         correlationId: Int = 0): TopicMetadataResponse = {
+                         correlationId: Int = 0, protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): TopicMetadataResponse = {
     val props = new Properties()
     props.put("metadata.broker.list", brokers.map(_.connectionString).mkString(","))
     props.put("client.id", clientId)
     props.put("request.timeout.ms", timeoutMs.toString)
+    if(protocol == SecurityProtocol.KERBEROS) props.put("kerberos.enable", "true")
     val producerConfig = new ProducerConfig(props)
     fetchTopicMetadata(topics, brokers, producerConfig, correlationId)
   }
@@ -109,15 +110,15 @@ object ClientUtils extends Logging{
    /**
     * Creates a blocking channel to a random broker
     */
-   def channelToAnyBroker(zkClient: ZkClient, socketTimeoutMs: Int = 3000) : BlockingChannel = {
+   def channelToAnyBroker(zkClient: ZkClient, socketTimeoutMs: Int = 3000, securityProtocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) : BlockingChannel = {
      var channel: BlockingChannel = null
      var connected = false
      while (!connected) {
-       val allBrokers = getAllBrokerEndPointsForChannel(zkClient, SecurityProtocol.PLAINTEXT)
+       val allBrokers = getAllBrokerEndPointsForChannel(zkClient, securityProtocol)
        Random.shuffle(allBrokers).find { broker =>
          trace("Connecting to broker %s:%d.".format(broker.host, broker.port))
          try {
-           channel = new BlockingChannel(broker.host, broker.port, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs)
+           channel = new BlockingChannel(broker.host, broker.port, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs, securityProtocol)
            channel.connect()
            debug("Created channel to broker %s:%d.".format(channel.host, channel.port))
            true
@@ -138,8 +139,9 @@ object ClientUtils extends Logging{
    /**
     * Creates a blocking channel to the offset manager of the given group
     */
-   def channelToOffsetManager(group: String, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000) = {
-     var queryChannel = channelToAnyBroker(zkClient)
+  def channelToOffsetManager(group: String, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000,
+    securityProtocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) = {
+    var queryChannel = channelToAnyBroker(zkClient, securityProtocol = securityProtocol)
 
      var offsetManagerChannelOpt: Option[BlockingChannel] = None
 
@@ -150,7 +152,7 @@ object ClientUtils extends Logging{
        while (!coordinatorOpt.isDefined) {
          try {
            if (!queryChannel.isConnected)
-             queryChannel = channelToAnyBroker(zkClient)
+             queryChannel = channelToAnyBroker(zkClient, securityProtocol = securityProtocol)
            debug("Querying %s:%d to locate offset manager for %s.".format(queryChannel.host, queryChannel.port, group))
            queryChannel.send(ConsumerMetadataRequest(group))
            val response = queryChannel.receive()
@@ -182,7 +184,7 @@ object ClientUtils extends Logging{
            offsetManagerChannel = new BlockingChannel(coordinator.host, coordinator.port,
                                                       BlockingChannel.UseDefaultBufferSize,
                                                       BlockingChannel.UseDefaultBufferSize,
-                                                      socketTimeoutMs)
+                                                      socketTimeoutMs, securityProtocol)
            offsetManagerChannel.connect()
            offsetManagerChannelOpt = Some(offsetManagerChannel)
            queryChannel.disconnect()

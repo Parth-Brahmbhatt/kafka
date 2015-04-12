@@ -30,6 +30,7 @@ import scala.collection.{mutable, Set, Map}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.atomic.AtomicLong
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 import com.yammer.metrics.core.Gauge
 
@@ -38,12 +39,12 @@ import com.yammer.metrics.core.Gauge
  */
 abstract class AbstractFetcherThread(name: String, clientId: String, sourceBroker: BrokerEndPoint, socketTimeout: Int, socketBufferSize: Int,
                                      fetchSize: Int, fetcherBrokerId: Int = -1, maxWait: Int = 0, minBytes: Int = 1,
-                                     isInterruptible: Boolean = true)
+                                     isInterruptible: Boolean = true, securityProtocol: SecurityProtocol = SecurityProtocol.PLAINTEXT)
   extends ShutdownableThread(name, isInterruptible) {
   private val partitionMap = new mutable.HashMap[TopicAndPartition, Long] // a (topic, partition) -> offset map
   private val partitionMapLock = new ReentrantLock
   private val partitionMapCond = partitionMapLock.newCondition()
-  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, socketTimeout, socketBufferSize, clientId)
+  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, socketTimeout, socketBufferSize, clientId, securityProtocol)
   private val metricId = new ClientIdAndBroker(clientId, sourceBroker.host, sourceBroker.port)
   val fetcherStats = new FetcherStats(metricId)
   val fetcherLagStats = new FetcherLagStats(metricId)

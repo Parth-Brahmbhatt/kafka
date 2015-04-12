@@ -66,4 +66,3 @@ class OldProducer(producerProps: Properties) extends BaseProducer {
     this.producer.close()
   }
 }
-

@@ -23,6 +23,8 @@ import kafka.utils._
 import java.util.Random
 
 import org.apache.kafka.common.utils.Utils._
+import org.apache.kafka.common.protocol.SecurityProtocol
+
 
 object SyncProducer {
   val RequestKey: Short = 0
@@ -37,8 +39,11 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
 
   private val lock = new Object()
   @volatile private var shutdown: Boolean = false
+  private var protocol = SecurityProtocol.PLAINTEXT
+  if(config.kerberosEnable) protocol = SecurityProtocol.KERBEROS
   private val blockingChannel = new BlockingChannel(config.host, config.port, BlockingChannel.UseDefaultBufferSize,
-    config.sendBufferBytes, config.requestTimeoutMs)
+    config.sendBufferBytes, config.requestTimeoutMs, protocol)
+
   val producerRequestStats = ProducerRequestStatsRegistry.getProducerRequestStats(config.clientId)
 
   trace("Instantiating Scala Sync Producer with properties: %s".format(config.props))
@@ -135,8 +140,10 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
   }
 
   private def connect(): BlockingChannel = {
+    info("are we atleast coming here")
     if (!blockingChannel.isConnected && !shutdown) {
       try {
+        info("if so are we doing connect")
         blockingChannel.connect()
         info("Connected to " + formatAddress(config.host, config.port) + " for producing")
       } catch {
@@ -151,6 +158,7 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
   }
 
   private def getOrMakeConnection() {
+    info("blocking channel connected "+blockingChannel.isConnected)
     if(!blockingChannel.isConnected) {
       connect()
     }

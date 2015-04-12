@@ -25,7 +25,7 @@ import kafka.cluster.EndPoint
 import kafka.api.ApiVersion
 import org.apache.kafka.common.protocol.SecurityProtocol
 import scala.collection.{immutable, JavaConversions, Map}
-
+import java.io.File
 /**
  * Configuration settings for the kafka server
  */
@@ -87,9 +87,6 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
     require(distinctPorts.size == endpoints.size, "Each listener must have a different port")
     require(distinctProtocols.size == endpoints.size, "Each listener must have a different protocol")
   }
-
-
-
 
   /*********** General Configuration ***********/
 
@@ -365,6 +362,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
 
+
   val interBrokerSecurityProtocol: SecurityProtocol = SecurityProtocol.valueOf(props.getString("inter.broker.security.protocol", SecurityProtocol.PLAINTEXT.toString))
   val interBrokerProtocolVersion: ApiVersion = ApiVersion(props.getString("inter.broker.protocol.version", ApiVersion.latestVersion.toString))
 
@@ -374,6 +372,9 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   private val _advertisedListeners = props.getString("advertised.listeners", null)
   val advertisedListeners = getAdvertisedListeners()
+
+  /* Enable kerberos */
+  val kerberosEnable = props.getBoolean("kerberos.enable", false)
 
   // If the user did not define listeners but did define host or port, let's use them in backward compatible way
   // If none of those are defined, we default to PLAINTEXT://:9092

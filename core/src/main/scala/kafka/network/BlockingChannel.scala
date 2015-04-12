@@ -21,7 +21,13 @@ import java.net.InetSocketAddress
 import java.nio.channels._
 import kafka.utils.{nonthreadsafe, Logging}
 import kafka.api.RequestOrResponse
+import kafka.common.KerberosLoginManager
 
+import javax.security.auth.Subject
+import org.apache.kafka.common.security.kerberos.Login
+import org.apache.kafka.common.network.{Channel, GSSClientChannel}
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.AuthUtils
 
 object BlockingChannel{
   val UseDefaultBufferSize = -1
@@ -32,13 +38,15 @@ object BlockingChannel{
  *
  */
 @nonthreadsafe
-class BlockingChannel( val host: String, 
-                       val port: Int, 
-                       val readBufferSize: Int, 
-                       val writeBufferSize: Int, 
-                       val readTimeoutMs: Int ) extends Logging {
+class BlockingChannel( val host: String,
+                       val port: Int,
+                       val readBufferSize: Int,
+                       val writeBufferSize: Int,
+                       val readTimeoutMs: Int,
+                       val securityProtocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
+
   private var connected = false
-  private var channel: SocketChannel = null
+  private var channel: Channel = null
   private var readChannel: ReadableByteChannel = null
   private var writeChannel: GatheringByteChannel = null
   private val lock = new Object()
@@ -47,27 +55,32 @@ class BlockingChannel( val host: String,
   def connect() = lock synchronized  {
     if(!connected) {
       try {
-        channel = SocketChannel.open()
+        val socketChannel = SocketChannel.open()
         if(readBufferSize > 0)
-          channel.socket.setReceiveBufferSize(readBufferSize)
+          socketChannel.socket.setReceiveBufferSize(readBufferSize)
         if(writeBufferSize > 0)
-          channel.socket.setSendBufferSize(writeBufferSize)
-        channel.configureBlocking(true)
-        channel.socket.setSoTimeout(readTimeoutMs)
-        channel.socket.setKeepAlive(true)
-        channel.socket.setTcpNoDelay(true)
-        channel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
-
+          socketChannel.socket.setSendBufferSize(writeBufferSize)
+        socketChannel.configureBlocking(true)
+        socketChannel.socket.setSoTimeout(connectTimeoutMs)
+        socketChannel.socket.setKeepAlive(true)
+        socketChannel.socket.setTcpNoDelay(true)
+        socketChannel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
+        if (securityProtocol == SecurityProtocol.KERBEROS) {
+          channel = new GSSClientChannel(socketChannel, KerberosLoginManager.subject, KerberosLoginManager.serviceName, host);
+          channel.handshake(true, true);
+        } else {
+          channel = new Channel(socketChannel)
+        }
         writeChannel = channel
-        readChannel = Channels.newChannel(channel.socket().getInputStream)
+        readChannel = Channels.newChannel(channel.getIOChannel.socket().getInputStream)
         connected = true
         // settings may not match what we requested above
         val msg = "Created socket with SO_TIMEOUT = %d (requested %d), SO_RCVBUF = %d (requested %d), SO_SNDBUF = %d (requested %d), connectTimeoutMs = %d."
-        debug(msg.format(channel.socket.getSoTimeout,
+        debug(msg.format(channel.getIOChannel.socket.getSoTimeout,
                          readTimeoutMs,
-                         channel.socket.getReceiveBufferSize, 
+                         channel.getIOChannel.socket.getReceiveBufferSize,
                          readBufferSize,
-                         channel.socket.getSendBufferSize,
+                         channel.getIOChannel.socket.getSendBufferSize,
                          writeBufferSize,
                          connectTimeoutMs))
 
@@ -76,16 +89,13 @@ class BlockingChannel( val host: String,
       }
     }
   }
-  
+
   def disconnect() = lock synchronized {
     if(channel != null) {
       swallow(channel.close())
-      swallow(channel.socket.close())
       channel = null
       writeChannel = null
     }
-    // closing the main socket channel *should* close the read channel
-    // but let's do it to be sure.
     if(readChannel != null) {
       swallow(readChannel.close())
       readChannel = null
@@ -102,7 +112,7 @@ class BlockingChannel( val host: String,
     val send = new BoundedByteBufferSend(request)
     send.writeCompletely(writeChannel)
   }
-  
+
   def receive(): Receive = {
     if(!connected)
       throw new ClosedChannelException()

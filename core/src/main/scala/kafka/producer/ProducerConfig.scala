@@ -46,6 +46,7 @@ object ProducerConfig extends Config {
       case _ => throw new InvalidConfigException("Invalid value " + producerType + " for producer.type, valid values are sync/async")
     }
   }
+
 }
 
 class ProducerConfig private (val props: VerifiableProperties)
@@ -113,5 +114,4 @@ class ProducerConfig private (val props: VerifiableProperties)
    */
   val topicMetadataRefreshIntervalMs = props.getInt("topic.metadata.refresh.interval.ms", 600000)
 
-  validate(this)
 }

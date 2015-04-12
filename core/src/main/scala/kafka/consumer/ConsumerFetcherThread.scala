@@ -22,12 +22,13 @@ import kafka.server.AbstractFetcherThread
 import kafka.message.ByteBufferMessageSet
 import kafka.api.{Request, OffsetRequest, FetchResponsePartitionData}
 import kafka.common.TopicAndPartition
-
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 class ConsumerFetcherThread(name: String,
                             val config: ConsumerConfig,
                             sourceBroker: BrokerEndPoint,
                             partitionMap: Map[TopicAndPartition, PartitionTopicInfo],
+                            protocol: SecurityProtocol,
                             val consumerFetcherManager: ConsumerFetcherManager)
         extends AbstractFetcherThread(name = name,
                                       clientId = config.clientId,
@@ -38,7 +39,8 @@ class ConsumerFetcherThread(name: String,
                                       fetcherBrokerId = Request.OrdinaryConsumerId,
                                       maxWait = config.fetchWaitMaxMs,
                                       minBytes = config.fetchMinBytes,
-                                      isInterruptible = true) {
+                                      isInterruptible = true,
+                                      protocol) {
 
   // process fetched data
   def processPartitionData(topicAndPartition: TopicAndPartition, fetchOffset: Long, partitionData: FetchResponsePartitionData) {

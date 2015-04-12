@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -23,18 +23,18 @@ import kafka.utils._
 
 /**
  * Represents a communication between the client and server
- * 
+ *
  */
 @nonthreadsafe
 private[kafka] class BoundedByteBufferReceive(val maxSize: Int) extends Receive with Logging {
-  
+
   private val sizeBuffer = ByteBuffer.allocate(4)
   private var contentBuffer: ByteBuffer = null
-  
+
   def this() = this(Int.MaxValue)
-  
+
   var complete: Boolean = false
-  
+
   /**
    * Get the content buffer for this transmission
    */
@@ -42,7 +42,7 @@ private[kafka] class BoundedByteBufferReceive(val maxSize: Int) extends Receive 
     expectComplete()
     contentBuffer
   }
-  
+
   /**
    * Read the bytes in this response from the given channel
    */

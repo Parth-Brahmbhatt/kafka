@@ -25,6 +25,7 @@ import kafka.cluster.BrokerEndPoint
 import kafka.metrics.KafkaMetricsGroup
 import kafka.common.TopicAndPartition
 import com.yammer.metrics.core.Gauge
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 abstract class AbstractFetcherManager(protected val name: String, clientId: String, numFetchers: Int = 1)
   extends Logging with KafkaMetricsGroup {

@@ -37,6 +37,8 @@ import kafka.utils._
 import org.I0Itec.zkclient.exception.ZkNodeExistsException
 import org.I0Itec.zkclient.{IZkChildListener, IZkDataListener, IZkStateListener, ZkClient}
 import org.apache.zookeeper.Watcher.Event.KeeperState
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.AuthUtils
 
 import scala.collection._
 
@@ -107,6 +109,12 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
   private val kafkaCommitMeter = newMeter("KafkaCommitsPerSec", "commits", TimeUnit.SECONDS, Map("clientId" -> config.clientId))
   private val zkCommitMeter = newMeter("ZooKeeperCommitsPerSec", "commits", TimeUnit.SECONDS, Map("clientId" -> config.clientId))
   private val rebalanceTimer = new KafkaTimer(newTimer("RebalanceRateAndTime", TimeUnit.MILLISECONDS, TimeUnit.SECONDS, Map("clientId" -> config.clientId)))
+  private var protocol = SecurityProtocol.PLAINTEXT
+  if(config.kerberosEnable) protocol = SecurityProtocol.KERBEROS
+
+  if(config.kerberosEnable) {
+    KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
+  }
 
   val consumerIdString = {
     var consumerUuid : String = null
@@ -175,7 +183,7 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
   private def ensureOffsetManagerConnected() {
     if (config.offsetsStorage == "kafka") {
       if (offsetsChannel == null || !offsetsChannel.isConnected)
-        offsetsChannel = ClientUtils.channelToOffsetManager(config.groupId, zkClient, config.offsetsChannelSocketTimeoutMs, config.offsetsChannelBackoffMs)
+        offsetsChannel = ClientUtils.channelToOffsetManager(config.groupId, zkClient, config.offsetsChannelSocketTimeoutMs, config.offsetsChannelBackoffMs, protocol)
 
       debug("Connected to offset manager %s:%d.".format(offsetsChannel.host, offsetsChannel.port))
     }

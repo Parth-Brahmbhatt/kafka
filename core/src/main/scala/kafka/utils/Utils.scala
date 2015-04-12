@@ -386,6 +386,7 @@ object Utils extends Logging {
 
   def listenerListToEndPoints(listeners: String): immutable.Map[SecurityProtocol, EndPoint] = {
     val listenerList = parseCsvList(listeners)
+    info("hello listeners "+listenerList)
     listenerList.map(listener => EndPoint.createEndPoint(listener)).map(ep => ep.protocolType -> ep).toMap
   }
 

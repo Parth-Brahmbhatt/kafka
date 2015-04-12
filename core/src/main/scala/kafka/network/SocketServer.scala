@@ -26,10 +26,12 @@ import java.nio.channels._
 
 import kafka.cluster.EndPoint
 import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.network.{Channel, GSSServerChannel}
+
 
 import scala.collection._
 
-import kafka.common.KafkaException
+import kafka.common.{KafkaException, KerberosLoginManager}
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils._
 import kafka.utils.Utils
@@ -51,7 +53,7 @@ class SocketServer(val brokerId: Int,
                    val maxRequestSize: Int = Int.MaxValue,
                    val maxConnectionsPerIp: Int = Int.MaxValue,
                    val connectionsMaxIdleMs: Long,
-                   val maxConnectionsPerIpOverrides: Map[String, Int] ) extends Logging with KafkaMetricsGroup {
+                   val maxConnectionsPerIpOverrides: Map[String, Int]) extends Logging with KafkaMetricsGroup {
   this.logIdent = "[Socket Server on Broker " + brokerId + "], "
   private val time = SystemTime
   private val processors = new Array[Processor](numProcessorThreads)
@@ -315,8 +317,12 @@ private[kafka] class Acceptor(val host: String,
             .format(socketChannel.socket.getInetAddress, socketChannel.socket.getLocalSocketAddress,
                   socketChannel.socket.getSendBufferSize, sendBufferSize,
                   socketChannel.socket.getReceiveBufferSize, recvBufferSize))
-
-      processor.accept(socketChannel)
+      var channel: Channel = null
+      if (protocol == SecurityProtocol.KERBEROS)
+        channel = new GSSServerChannel(socketChannel, KerberosLoginManager.subject)
+      else
+        channel = new Channel(socketChannel)
+      processor.accept(socketChannel, channel)
     } catch {
       case e: TooManyConnectionsException =>
         info("Rejected connection from %s, address already has the configured maximum of %d connections.".format(e.ip, e.count))
@@ -346,6 +352,7 @@ private[kafka] class Processor(val id: Int,
   private var currentTimeNanos = SystemTime.nanoseconds
   private val lruConnections = new util.LinkedHashMap[SelectionKey, Long]
   private var nextIdleCloseCheckTime = currentTimeNanos + connectionsMaxIdleNanos
+  private val socketContainer = new ConcurrentHashMap[SocketChannel, Channel]()
 
   override def run() {
     startupComplete()
@@ -371,14 +378,26 @@ private[kafka] class Processor(val id: Int,
         val iter = keys.iterator()
         while(iter.hasNext && isRunning) {
           var key: SelectionKey = null
+          var channel: Channel = null
           try {
             key = iter.next
+            channel = socketContainer.get(channelFor(key))
             iter.remove()
-            if(key.isReadable)
-              read(key)
-            else if(key.isWritable)
-              write(key)
-            else if(!key.isValid)
+            if(key.isReadable) {
+              if(channel.isHandshakeComplete()) {
+                read(key)
+              } else {
+                val handShakeStatus = channel.handshake(key.isReadable(), key.isWritable())
+                if (handShakeStatus == 0) key.interestOps(SelectionKey.OP_READ) else key.interestOps(handShakeStatus)
+              }
+            } else if(key.isWritable) {
+              if(channel.isHandshakeComplete) {
+                write(key)
+              } else {
+                val handShakeStatus = channel.handshake(key.isReadable(), key.isWritable())
+                if (handShakeStatus == 0) key.interestOps(SelectionKey.OP_READ) else key.interestOps(handShakeStatus)
+              }
+            } else if(!key.isValid)
               close(key)
             else
               throw new IllegalStateException("Unrecognized key state for processor thread.")
@@ -409,6 +428,9 @@ private[kafka] class Processor(val id: Int,
    */
   override def close(key: SelectionKey): Unit = {
     lruConnections.remove(key)
+    val channel = socketContainer.get(channelFor(key))
+    channel.close()
+    socketContainer.remove(channelFor(key))
     super.close(key)
   }
 
@@ -452,8 +474,9 @@ private[kafka] class Processor(val id: Int,
   /**
    * Queue up a new connection for reading
    */
-  def accept(socketChannel: SocketChannel) {
+  def accept(socketChannel: SocketChannel, channel: Channel) {
     newConnections.add(socketChannel)
+    socketContainer.put(socketChannel, channel)
     wakeup()
   }
 
@@ -473,14 +496,15 @@ private[kafka] class Processor(val id: Int,
    */
   def read(key: SelectionKey) {
     lruConnections.put(key, currentTimeNanos)
+    val channel = socketContainer.get(channelFor(key))
     val socketChannel = channelFor(key)
     var receive = key.attachment.asInstanceOf[Receive]
     if(key.attachment == null) {
       receive = new BoundedByteBufferReceive(maxRequestSize)
       key.attach(receive)
     }
-    val read = receive.readFrom(socketChannel)
-    val address = socketChannel.socket.getRemoteSocketAddress();
+    val read = receive.readFrom(channel)
+    val address = channel.getIOChannel.socket.getRemoteSocketAddress()
     trace(read + " bytes read from " + address)
     if(read < 0) {
       close(key)
@@ -494,7 +518,7 @@ private[kafka] class Processor(val id: Int,
       key.interestOps(key.interestOps & (~SelectionKey.OP_READ))
     } else {
       // more reading to be done
-      trace("Did not finish reading, registering for read again on connection " + socketChannel.socket.getRemoteSocketAddress())
+      trace("Did not finish reading, registering for read again on connection " + address)
       key.interestOps(SelectionKey.OP_READ)
       wakeup()
     }
@@ -505,19 +529,21 @@ private[kafka] class Processor(val id: Int,
    */
   def write(key: SelectionKey) {
     val socketChannel = channelFor(key)
+    val channel = socketContainer.get(channelFor(key))
     val response = key.attachment().asInstanceOf[RequestChannel.Response]
+    val address = channel.getIOChannel.socket.getRemoteSocketAddress()
     val responseSend = response.responseSend
     if(responseSend == null)
       throw new IllegalStateException("Registered for write interest but no response attached to key.")
     val written = responseSend.writeTo(socketChannel)
-    trace(written + " bytes written to " + socketChannel.socket.getRemoteSocketAddress() + " using key " + key)
+    trace(written + " bytes written to " + address + " using key " + key)
     if(responseSend.complete) {
       response.request.updateRequestMetrics()
       key.attach(null)
-      trace("Finished writing, registering for read on connection " + socketChannel.socket.getRemoteSocketAddress())
+      trace("Finished writing, registering for read on connection " + address)
       key.interestOps(SelectionKey.OP_READ)
     } else {
-      trace("Did not finish writing, registering for write again on connection " + socketChannel.socket.getRemoteSocketAddress())
+      trace("Did not finish writing, registering for write again on connection " + address)
       key.interestOps(SelectionKey.OP_WRITE)
       wakeup()
     }

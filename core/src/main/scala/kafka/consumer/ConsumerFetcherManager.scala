@@ -51,6 +51,8 @@ class ConsumerFetcherManager(private val consumerIdString: String,
   private val cond = lock.newCondition()
   private var leaderFinderThread: ShutdownableThread = null
   private val correlationId = new AtomicInteger(0)
+  private var protocol = SecurityProtocol.PLAINTEXT
+  if(config.kerberosEnable) protocol = SecurityProtocol.KERBEROS
 
   private class LeaderFinderThread(name: String) extends ShutdownableThread(name) {
     // thread responsible for adding the fetcher to the right broker when leader is available
@@ -64,12 +66,12 @@ class ConsumerFetcherManager(private val consumerIdString: String,
         }
 
         trace("Partitions without leader %s".format(noLeaderPartitionSet))
-        val brokers = getAllBrokerEndPointsForChannel(zkClient, SecurityProtocol.PLAINTEXT)
+        val brokers = getAllBrokerEndPointsForChannel(zkClient, protocol)
         val topicsMetadata = ClientUtils.fetchTopicMetadata(noLeaderPartitionSet.map(m => m.topic).toSet,
                                                             brokers,
                                                             config.clientId,
                                                             config.socketTimeoutMs,
-                                                            correlationId.getAndIncrement).topicsMetadata
+                                                            correlationId.getAndIncrement, protocol).topicsMetadata
         if(logger.isDebugEnabled) topicsMetadata.foreach(topicMetadata => debug(topicMetadata.toString()))
         topicsMetadata.foreach { tmd =>
           val topic = tmd.topic
@@ -119,7 +121,7 @@ class ConsumerFetcherManager(private val consumerIdString: String,
   override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): AbstractFetcherThread = {
     new ConsumerFetcherThread(
       "ConsumerFetcherThread-%s-%d-%d".format(consumerIdString, fetcherId, sourceBroker.id),
-      config, sourceBroker, partitionMap, this)
+      config, sourceBroker, partitionMap, this.protocol, this)
   }
 
   def startConnections(topicInfos: Iterable[PartitionTopicInfo], cluster: Cluster) {
