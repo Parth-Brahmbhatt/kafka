@@ -1112,6 +1112,19 @@ class KafkaController(val config : KafkaConfig, zkClient: ZkClient, val brokerSt
         controllerElector.elect
       }
     }
+
+    /**
+     * Called when a session cannot be re-established. This should be used to implement connection
+     * failure handling e.g. retry to connect or pass the error up
+     *
+     * @param error
+     * The error that prevents a session from being established
+     * @throws Exception
+     * On any error.
+     */
+    def handleSessionEstablishmentError(error: Throwable): Unit = {
+      //do nothing,
+    }
   }
 
   private def checkAndTriggerPartitionRebalance(): Unit = {
