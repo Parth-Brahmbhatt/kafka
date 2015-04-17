@@ -17,6 +17,11 @@
 
 package kafka.utils
 
+import java.io.File
+import java.net.URI
+import java.security.URIParameter
+import javax.security.auth.login.Configuration
+
 import kafka.cluster._
 import kafka.consumer.{ConsumerThreadId, TopicCount}
 import org.I0Itec.zkclient.ZkClient
@@ -25,9 +30,10 @@ import org.I0Itec.zkclient.exception.{ZkNodeExistsException, ZkNoNodeException,
 import org.I0Itec.zkclient.serialize.ZkSerializer
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.zookeeper.ZooDefs
 import collection._
 import kafka.api.LeaderAndIsr
-import org.apache.zookeeper.data.Stat
+import org.apache.zookeeper.data.{ACL, Stat}
 import kafka.admin._
 import kafka.common.{KafkaException, NoEpochForPartitionException}
 import kafka.controller.ReassignedPartitionsContext
@@ -733,7 +739,7 @@ object ZkUtils extends Logging {
       case e: ZkNoNodeException => {
         createParentPath(client, BrokerSequenceIdPath)
         try {
-          client.createPersistent(BrokerSequenceIdPath, "")
+          ZkPath.createPersistent(client, BrokerSequenceIdPath, "")
           0
         } catch {
           case e: ZkNodeExistsException =>
@@ -828,6 +834,32 @@ class ZKConfig(props: VerifiableProperties) {
 object ZkPath {
   @volatile private var isNamespacePresent: Boolean = false
 
+  import scala.collection.JavaConversions._
+
+  private val acls: List[ACL] = (ZooDefs.Ids.CREATOR_ALL_ACL ++ ZooDefs.Ids.READ_ACL_UNSAFE).toList
+  /** true if java.security.auth.login.config is set to some jaas file which has "Client" entry. **/
+
+  private val isSecure: Boolean = {
+    val loginConfigurationFile: String = System.getProperty("java.security.auth.login.config")
+    var isSecure: Boolean = false
+    if ((loginConfigurationFile != null) && (loginConfigurationFile.length > 0)) {
+      val config_file: File = new File(loginConfigurationFile)
+      if (!config_file.canRead) {
+        throw new RuntimeException("File " + loginConfigurationFile + " cannot be read.")
+      }
+      try {
+        val config_uri: URI = config_file.toURI
+        val login_conf = Configuration.getInstance("JavaLoginConfig", new URIParameter(config_uri))
+        isSecure = login_conf.getAppConfigurationEntry("Client") != null
+      } catch {
+          case ex: Exception => {
+            throw new RuntimeException(ex)
+          }
+      }
+    }
+    isSecure
+  }
+
   def checkNamespace(client: ZkClient) {
     if(isNamespacePresent)
       return
@@ -844,21 +876,33 @@ object ZkPath {
 
   def createPersistent(client: ZkClient, path: String, data: Object) {
     checkNamespace(client)
-    client.createPersistent(path, data)
+    if(isSecure)
+      client.createPersistent(path, data, acls)
+    else
+      client.createPersistent(path, data)
   }
 
   def createPersistent(client: ZkClient, path: String, createParents: Boolean) {
     checkNamespace(client)
-    client.createPersistent(path, createParents)
+    if(isSecure)
+      client.createPersistent(path, createParents, acls)
+    else
+      client.createPersistent(path, createParents)
   }
 
   def createEphemeral(client: ZkClient, path: String, data: Object) {
     checkNamespace(client)
-    client.createEphemeral(path, data)
+    if(isSecure)
+      client.createEphemeral(path, data, acls)
+    else
+      client.createEphemeral(path, data)
   }
 
   def createPersistentSequential(client: ZkClient, path: String, data: Object): String = {
     checkNamespace(client)
-    client.createPersistentSequential(path, data)
+    if(isSecure)
+      client.createPersistentSequential(path, data, acls)
+    else
+      client.createPersistentSequential(path, data)
   }
 }
