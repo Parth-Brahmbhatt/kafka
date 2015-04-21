@@ -18,7 +18,7 @@
 package kafka.security.auth
 
 import kafka.network.RequestChannel.Session
-import kafka.server.{TopicConfigCache, MetadataCache, KafkaConfig}
+import kafka.server.KafkaConfig
 
 /**
  * Top level interface that all plugable authorizer must implement. Kafka server will read "authorizer.class" config
@@ -33,7 +33,7 @@ trait Authorizer {
   /**
    * Guaranteed to be called before any authorize call is made.
    */
-  def initialize(kafkaConfig: KafkaConfig, topicConfigCache: TopicConfigCache): Unit
+  def initialize(kafkaConfig: KafkaConfig): Unit
   
   /**
    * @param session The session being authenticated.
@@ -41,5 +41,43 @@ trait Authorizer {
    * @param resource Resource the client is trying to access.
    * @return
    */
-  def authorize(session: Session, operation: Operation, resource: String): Boolean
+  def authorize(session: Session, operation: Operation, resource: Resource): Boolean
+
+  /**
+   * add the acls to resource, this is an additive operation so existing acls will not be overwritten, instead these new
+   * acls will be added to existing acls.
+   * @param acls set of acls to add to existing acls
+   * @param resource the resource to which these acls should be attached.
+   */
+  def addAcls(acls: Set[Acl], resource: Resource): Unit
+
+  /**
+   * remove these acls from the resource.
+   * @param acls set of acls to be removed.
+   * @param resource resource from which the acls should be removed.
+   * @return true if some acl got removed, false if no acl was removed.
+   */
+  def removeAcls(acls: Set[Acl], resource: Resource): Boolean
+
+  /**
+   * remove a resource along with all of its acls from acl store.
+   * @param resource
+   * @return
+   */
+  def removeAcls(resource: Resource): Boolean
+
+  /**
+   * get set of acls for this resource
+   * @param resource
+   * @return empty set if no acls are found, otherwise the acls for the resource.
+   */
+  def getAcls(resource: Resource): Set[Acl]
+
+  /**
+   * get the acls for this principal.
+   * @param principal
+   * @return empty set if no acls exist for this principal, otherwise the acls for the principal.
+   */
+  def getAcls(principal: KafkaPrincipal): Set[Acl]
 }
+

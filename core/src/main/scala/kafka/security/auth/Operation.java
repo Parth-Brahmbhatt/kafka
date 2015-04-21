@@ -27,5 +27,19 @@ public enum Operation {
    EDIT,
    DESCRIBE,
    SEND_CONTROL_MSG,
-   ALL
+   ALL;
+
+   /**
+    * method defined for case insensitive check. the default value of method is case sensitive
+    */
+   public static Operation fromString(String operationName) {
+      if(operationName != null) {
+         for(Operation operation: Operation.values()) {
+            if(operationName.equalsIgnoreCase(operation.name())) {
+               return operation;
+            }
+         }
+      }
+      throw new IllegalArgumentException("no matching enum value fonund for " + operationName);
+   }
 }
