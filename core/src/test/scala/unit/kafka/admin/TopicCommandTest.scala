@@ -17,13 +17,12 @@
 package kafka.admin
 
 import junit.framework.Assert._
-import kafka.security.auth.{Operation, PermissionType, Acl}
 import org.junit.Test
 import org.scalatest.junit.JUnit3Suite
 import kafka.utils.Logging
 import kafka.utils.TestUtils
 import kafka.zk.ZooKeeperTestHarness
-import kafka.server.{TopicConfig, OffsetManager}
+import kafka.server.{OffsetManager, KafkaConfig}
 import kafka.admin.TopicCommand.TopicCommandOptions
 import kafka.utils.ZkUtils
 
@@ -35,52 +34,31 @@ class TopicCommandTest extends JUnit3Suite with ZooKeeperTestHarness with Loggin
     val numPartitionsOriginal = 1
     val cleanupKey = "cleanup.policy"
     val cleanupVal = "compact"
-
-    val acl1: Acl = new Acl("alice", PermissionType.DENY, Set[String]("host1","host2"), Set[Operation](Operation.READ, Operation.WRITE))
-    val acl2: Acl = new Acl("bob", PermissionType.ALLOW, Set[String]("*"), Set[Operation](Operation.READ, Operation.WRITE))
-    val acl3: Acl = new Acl("bob", PermissionType.DENY, Set[String]("host1","host2"), Set[Operation](Operation.READ))
-
     // create brokers
     val brokers = List(0, 1, 2)
-    val aclFilePath: String = Thread.currentThread().getContextClassLoader.getResource("acl.json").getPath
-
     TestUtils.createBrokersInZk(zkClient, brokers)
     // create the topic
     val createOpts = new TopicCommandOptions(Array("--partitions", numPartitionsOriginal.toString,
       "--replication-factor", "1",
       "--config", cleanupKey + "=" + cleanupVal,
-      "--topic", topic,
-      "--acl", aclFilePath))
-
+      "--topic", topic))
     TopicCommand.createTopic(zkClient, createOpts)
     val props = AdminUtils.fetchTopicConfig(zkClient, topic)
-
-    val topicConfig: TopicConfig = TopicConfig.fromProps(props)
     assertTrue("Properties after creation don't contain " + cleanupKey, props.containsKey(cleanupKey))
     assertTrue("Properties after creation have incorrect value", props.getProperty(cleanupKey).equals(cleanupVal))
-    assertEquals(Set[Acl](acl1, acl2, acl3), topicConfig.acls)
-    assertEquals(System.getProperty("user.name"), topicConfig.owner)
 
     // pre-create the topic config changes path to avoid a NoNodeException
     ZkUtils.createPersistentPath(zkClient, ZkUtils.TopicConfigChangesPath)
 
     // modify the topic to add new partitions
     val numPartitionsModified = 3
-    val testUser: String = "testUser"
     val alterOpts = new TopicCommandOptions(Array("--partitions", numPartitionsModified.toString,
       "--config", cleanupKey + "=" + cleanupVal,
-      "--owner", testUser,
       "--topic", topic))
     TopicCommand.alterTopic(zkClient, alterOpts)
     val newProps = AdminUtils.fetchTopicConfig(zkClient, topic)
-    val newTopicConfig: TopicConfig = TopicConfig.fromProps(newProps)
-
     assertTrue("Updated properties do not contain " + cleanupKey, newProps.containsKey(cleanupKey))
     assertTrue("Updated properties have incorrect value", newProps.getProperty(cleanupKey).equals(cleanupVal))
-    assertEquals(Set[Acl](acl1, acl2, acl3), newTopicConfig.acls)
-    assertEquals(testUser, newTopicConfig.owner)
-
-    //TODO add test to verify acl can be modified using --acl during alter topic command.
   }
 
   @Test

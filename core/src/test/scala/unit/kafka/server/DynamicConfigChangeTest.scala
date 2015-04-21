@@ -38,19 +38,10 @@ class DynamicConfigChangeTest extends JUnit3Suite with KafkaServerTestHarness {
       val logOpt = this.servers(0).logManager.getLog(tp)
       assertTrue(logOpt.isDefined)
       assertEquals(oldVal, logOpt.get.config.flushInterval)
-
-      //check config cache gets populated for a new topic.
-      val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
-      assertEquals(oldVal, config.logConfig.flushInterval)
     }
-
-    AdminUtils.changeTopicConfig(zkClient, tp.topic, LogConfig(flushInterval = newVal).toProps, null, null)
+    AdminUtils.changeTopicConfig(zkClient, tp.topic, LogConfig(flushInterval = newVal).toProps)
     TestUtils.retry(10000) {
       assertEquals(newVal, this.servers(0).logManager.getLog(tp).get.config.flushInterval)
-
-      //check config cache was updated with the new values.
-      val config = this.servers(0).topicConfigCache.getTopicConfig(tp.topic)
-      assertEquals(newVal, config.logConfig.flushInterval)
     }
   }
 
@@ -58,7 +49,7 @@ class DynamicConfigChangeTest extends JUnit3Suite with KafkaServerTestHarness {
   def testConfigChangeOnNonExistingTopic() {
     val topic = TestUtils.tempTopic
     try {
-      AdminUtils.changeTopicConfig(zkClient, topic, LogConfig(flushInterval = 10000).toProps, null, null)
+      AdminUtils.changeTopicConfig(zkClient, topic, LogConfig(flushInterval = 10000).toProps)
       fail("Should fail with AdminOperationException for topic doesn't exist")
     } catch {
       case e: AdminOperationException => // expected

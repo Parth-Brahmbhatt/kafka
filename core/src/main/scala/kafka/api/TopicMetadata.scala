@@ -30,21 +30,19 @@ object TopicMetadata {
   def readFrom(buffer: ByteBuffer, brokers: Map[Int, BrokerEndPoint]): TopicMetadata = {
     val errorCode = readShortInRange(buffer, "error code", (-1, Short.MaxValue))
     val topic = readShortString(buffer)
-
     val numPartitions = readIntInRange(buffer, "number of partitions", (0, Int.MaxValue))
     val partitionsMetadata: Array[PartitionMetadata] = new Array[PartitionMetadata](numPartitions)
     for(i <- 0 until numPartitions) {
       val partitionMetadata = PartitionMetadata.readFrom(buffer, brokers)
       partitionsMetadata(partitionMetadata.partitionId) = partitionMetadata
     }
-
     new TopicMetadata(topic, partitionsMetadata, errorCode)
   }
 }
 
 case class TopicMetadata(topic: String, partitionsMetadata: Seq[PartitionMetadata], errorCode: Short = ErrorMapping.NoError) extends Logging {
   def sizeInBytes: Int = {
-    2 /* error code */ +
+    2 /* error code */ + 
     shortStringLength(topic) + 
     4 + partitionsMetadata.map(_.sizeInBytes).sum /* size and partition data array */
   }
@@ -62,7 +60,6 @@ case class TopicMetadata(topic: String, partitionsMetadata: Seq[PartitionMetadat
   override def toString(): String = {
     val topicMetadataInfo = new StringBuilder
     topicMetadataInfo.append("{TopicMetadata for topic %s -> ".format(topic))
-
     errorCode match {
       case ErrorMapping.NoError =>
         partitionsMetadata.foreach { partitionMetadata =>
