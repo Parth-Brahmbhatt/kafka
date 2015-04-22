@@ -63,8 +63,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var topicConfigManager: TopicConfigManager = null
 
-  var topicConfigCache: TopicConfigCache = null
-
   var consumerCoordinator: ConsumerCoordinator = null
 
   var kafkaController: KafkaController = null
@@ -73,6 +71,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var kafkaHealthcheck: KafkaHealthcheck = null
   val metadataCache: MetadataCache = new MetadataCache(config.brokerId)
+
+
 
   var zkClient: ZkClient = null
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -119,76 +119,70 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
 
         socketServer = new SocketServer(config.brokerId,
-          config.listeners,
-          config.numNetworkThreads,
-          config.queuedMaxRequests,
-          config.socketSendBufferBytes,
-          config.socketReceiveBufferBytes,
-          config.socketRequestMaxBytes,
-          config.maxConnectionsPerIp,
-          config.connectionsMaxIdleMs,
-          config.maxConnectionsPerIpOverrides)
-        socketServer.startup()
+                                        config.listeners,
+                                        config.numNetworkThreads,
+                                        config.queuedMaxRequests,
+                                        config.socketSendBufferBytes,
+                                        config.socketReceiveBufferBytes,
+                                        config.socketRequestMaxBytes,
+                                        config.maxConnectionsPerIp,
+                                        config.connectionsMaxIdleMs,
+                                        config.maxConnectionsPerIpOverrides)
+          socketServer.startup()
 
-        /* start replica manager */
-        replicaManager = new ReplicaManager(config, time, zkClient, kafkaScheduler, logManager, isShuttingDown)
-        replicaManager.startup()
+          /* start replica manager */
+          replicaManager = new ReplicaManager(config, time, zkClient, kafkaScheduler, logManager, isShuttingDown)
+          replicaManager.startup()
 
-        /* start offset manager */
-        offsetManager = createOffsetManager()
+          /* start offset manager */
+          offsetManager = createOffsetManager()
 
-        /* start kafka controller */
-        kafkaController = new KafkaController(config, zkClient, brokerState)
-        kafkaController.startup()
+          /* start kafka controller */
+          kafkaController = new KafkaController(config, zkClient, brokerState)
+          kafkaController.startup()
 
-        /* start kafka coordinator */
-        consumerCoordinator = new ConsumerCoordinator(config, zkClient)
-        consumerCoordinator.startup()
+          /* start kafka coordinator */
+          consumerCoordinator = new ConsumerCoordinator(config, zkClient)
+          consumerCoordinator.startup()
 
-        /*initialize topic config cache*/
-        topicConfigCache = new TopicConfigCache(config.brokerId, zkClient, defaultConfig = config)
+          /* Get the authorizer and initialize it if one is specified.*/
+          val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
+            val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
+            authZ.initialize(config)
+            Option(authZ)
+          } else {
+            None
+          }
 
-        /* Get the authorizer and initialize it if one is specified.*/
-        val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
-              Option(CoreUtils.createObject(config.authorizerClassName))
-            } else {
-              None
-            }
+          /* start processing requests */
+          apis = new KafkaApis(socketServer.requestChannel, replicaManager, offsetManager, consumerCoordinator,
+            kafkaController, zkClient, config.brokerId, config, metadataCache, authorizer)
+          requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
+          brokerState.newState(RunningAsBroker)
 
-        if(authorizer.isDefined) {
-          authorizer.get.initialize(config, topicConfigCache)
-        }
+          Mx4jLoader.maybeLoad()
 
-        /* start processing requests */
-        apis = new KafkaApis(socketServer.requestChannel, replicaManager, offsetManager, consumerCoordinator,
-          kafkaController, zkClient, config.brokerId, config, metadataCache, authorizer)
-        requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
-        brokerState.newState(RunningAsBroker)
+          /* start topic config manager */
+          topicConfigManager = new TopicConfigManager(zkClient, logManager)
+          topicConfigManager.startup()
 
-        Mx4jLoader.maybeLoad()
+          /* tell everyone we are alive */
+          val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
+            if (endpoint.port == 0)
+              (protocol, EndPoint(endpoint.host, socketServer.boundPort(), endpoint.protocolType))
+            else
+              (protocol, endpoint)
+          }
+          kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
+          kafkaHealthcheck.startup()
 
-        /* start topic config manager */
-        topicConfigManager = new TopicConfigManager(zkClient, logManager, topicConfigCache)
-        topicConfigManager.startup()
+          /* register broker metrics */
+          registerStats()
 
-        /* tell everyone we are alive */
-        val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
-          if (endpoint.port == 0)
-            (protocol, EndPoint(endpoint.host, socketServer.boundPort(), endpoint.protocolType))
-          else
-            (protocol, endpoint)
-        }
-
-        kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
-        kafkaHealthcheck.startup()
-
-        /* register broker metrics */
-        registerStats()
-
-        shutdownLatch = new CountDownLatch(1)
-        startupComplete.set(true)
-        isStartingUp.set(false)
-        info("started")
+          shutdownLatch = new CountDownLatch(1)
+          startupComplete.set(true)
+          isStartingUp.set(false)
+          info("started")
       }
     }
     catch {

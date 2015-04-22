@@ -19,7 +19,7 @@ package kafka.server
 
 
 import kafka.message.{MessageSet}
-import kafka.security.auth.{Operation, Authorizer}
+import kafka.security.auth. {Operation, Authorizer}
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.requests.{JoinGroupResponse, JoinGroupRequest, HeartbeatRequest, HeartbeatResponse, ResponseHeader}
 import org.apache.kafka.common.TopicPartition
@@ -52,6 +52,7 @@ class KafkaApis(val requestChannel: RequestChannel,
                 val authorizer: Option[Authorizer]) extends Logging {
 
   this.logIdent = "[KafkaApi-%d] ".format(brokerId)
+  val clusterResourceName: String = "kafka-cluster"
 
   /**
    * Top-level method that handles all requests and multiplexes to the right api
@@ -102,7 +103,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.SEND_CONTROL_MSG, null)) {
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
       val leaderAndIsrResponse = new LeaderAndIsrResponse(leaderAndIsrRequest.correlationId, Map.empty, ErrorMapping.AuthorizationCode)
       requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(leaderAndIsrResponse)))
       return
@@ -125,7 +126,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.SEND_CONTROL_MSG, null)) {
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
       val stopReplicaResponse = new StopReplicaResponse(stopReplicaRequest.correlationId, Map.empty, ErrorMapping.AuthorizationCode)
       requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(stopReplicaResponse)))
       return
@@ -142,7 +143,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     if(authorizer.isDefined) {
       val unauthorizedTopicAndPartition = updateMetadataRequest.partitionStateInfos.filterKeys(
-        topicAndPartition => !authorizer.get.authorize(request.session, Operation.EDIT, topicAndPartition.topic)).keys
+        topicAndPartition => !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, topicAndPartition.topic)).keys
       //In this case the response does not allow to selectively report success/failure so if authorization fails, we fail the entire request.
       if (!unauthorizedTopicAndPartition.isEmpty) {
         val updateMetadataResponse = new UpdateMetadataResponse(updateMetadataRequest.correlationId, ErrorMapping.AuthorizationCode)
@@ -164,7 +165,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
     if(authorizer.isDefined) {
-      if (!authorizer.get.authorize(request.session, Operation.SEND_CONTROL_MSG, null)) {
+      if (!authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
         val controlledShutdownResponse = new ControlledShutdownResponse(controlledShutdownRequest.correlationId, ErrorMapping.AuthorizationCode,  Set.empty)
         requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(controlledShutdownResponse)))
         return
@@ -184,8 +185,10 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleOffsetCommitRequest(request: RequestChannel.Request) {
     val offsetCommitRequest = request.requestObj.asInstanceOf[OffsetCommitRequest]
 
+    //operation only allowed if client has READ permission on topic and Write permission on group
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  offsetCommitRequest.requestInfo.partition(
-      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, mapEntry._1.topic))
+      mapEntry => !authorizer.isDefined || (authorizer.get.authorize(request.session, Operation.READ, mapEntry._1.topic) &&
+        authorizer.get.authorize(request.session, Operation.WRITE, offsetCommitRequest.groupId)))
 
     // the callback for sending an offset commit response
     def sendResponseCallback(commitStatus: immutable.Map[TopicAndPartition, Short]) {
@@ -354,7 +357,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val offsetRequest = request.requestObj.asInstanceOf[OffsetRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  offsetRequest.requestInfo.partition(
-      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.READ, mapEntry._1.topic))
+      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, mapEntry._1.topic))
 
     val unauthorizedResponseStatus = unauthorizedRequestInfo.mapValues(_ => PartitionOffsetsResponse(ErrorMapping.AuthorizationCode, Nil))
 
@@ -502,7 +505,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataRequest]
     val topics = metadataRequest.topics.toSet
 
-    val (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.READ, topic))
+    val (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, topic))
 
     val unauthorizedTopicMetaData = unauthorizedTopics.map(topic => new TopicMetadata(topic, Seq.empty[PartitionMetadata], ErrorMapping.AuthorizationCode))
 
@@ -583,7 +586,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     val respHeader = new ResponseHeader(request.header.correlationId)
 
     val (authorizedTopics, unauthorizedTopics) =  joinGroupRequest.topics().partition(
-      topic => (!authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, topic))
+      topic => (!authorizer.isDefined || (authorizer.get.authorize(request.session, Operation.READ, topic)
+        && authorizer.get.authorize(request.session, Operation.READ, joinGroupRequest.groupId())))
     )
 
     val unauthorizedTopicPartition = unauthorizedTopics.map(topic => new TopicPartition(topic, -1))
@@ -610,7 +614,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
     val respHeader = new ResponseHeader(request.header.correlationId)
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.SEND_CONTROL_MSG, null)) {
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, clusterResourceName)) {
         val heartbeatResponse = new HeartbeatResponse(ErrorMapping.AuthorizationCode)
         requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(respHeader, heartbeatResponse)))
         return

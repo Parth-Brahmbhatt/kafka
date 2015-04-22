@@ -24,13 +24,13 @@ public enum Operation {
    WRITE,
    CREATE,
    DELETE,
-   EDIT,
+   ALTER,
    DESCRIBE,
-   SEND_CONTROL_MSG,
+   CLUSTER_ACTION,
    ALL;
 
    /**
-    * method defined for case insensitive check. the default value of method is case sensitive
+    * method defined for case insensitive check. the default valueOf() method is case sensitive
     */
    public static Operation fromString(String operationName) {
       if(operationName != null) {
@@ -40,6 +40,6 @@ public enum Operation {
             }
          }
       }
-      throw new IllegalArgumentException("no matching enum value fonund for " + operationName);
+      throw new IllegalArgumentException("no matching enum value found for " + operationName);
    }
 }

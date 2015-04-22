@@ -34,14 +34,14 @@ trait Authorizer {
    * Guaranteed to be called before any authorize call is made.
    */
   def initialize(kafkaConfig: KafkaConfig): Unit
-  
+
   /**
    * @param session The session being authenticated.
    * @param operation Type of operation client is trying to perform on resource.
    * @param resource Resource the client is trying to access.
    * @return
    */
-  def authorize(session: Session, operation: Operation, resource: Resource): Boolean
+  def authorize(session: Session, operation: Operation, resource: String): Boolean
 
   /**
    * add the acls to resource, this is an additive operation so existing acls will not be overwritten, instead these new
@@ -49,7 +49,7 @@ trait Authorizer {
    * @param acls set of acls to add to existing acls
    * @param resource the resource to which these acls should be attached.
    */
-  def addAcls(acls: Set[Acl], resource: Resource): Unit
+  def addAcls(acls: Set[Acl], resource: String): Unit
 
   /**
    * remove these acls from the resource.
@@ -57,21 +57,21 @@ trait Authorizer {
    * @param resource resource from which the acls should be removed.
    * @return true if some acl got removed, false if no acl was removed.
    */
-  def removeAcls(acls: Set[Acl], resource: Resource): Boolean
+  def removeAcls(acls: Set[Acl], resource: String): Boolean
 
   /**
    * remove a resource along with all of its acls from acl store.
    * @param resource
    * @return
    */
-  def removeAcls(resource: Resource): Boolean
+  def removeAcls(resource: String): Boolean
 
   /**
    * get set of acls for this resource
    * @param resource
    * @return empty set if no acls are found, otherwise the acls for the resource.
    */
-  def getAcls(resource: Resource): Set[Acl]
+  def getAcls(resource: String): Set[Acl]
 
   /**
    * get the acls for this principal.

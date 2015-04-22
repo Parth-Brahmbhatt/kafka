@@ -45,7 +45,6 @@ object Defaults {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
   val SuperUser = ""
-  val ClusterAclJsonFilePath = ""
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -152,7 +151,6 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
   val SuperUserProp = "super.users"
-  val ClusterAclJsonFilePathProp = "cluster.acl.json.file.path"
 
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
@@ -266,8 +264,6 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
   val SuperUserDoc = "Comman seperated list of users that will have super user access to the cluster and all the topics."
-  val ClusterAclJsonFilePathDoc = "Path to the json file describing cluster's acl. These acls are used to determine which users" +
-    "have access to cluster actions like CREATE topic."
 
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
@@ -410,7 +406,6 @@ object KafkaConfig {
        /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
       .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
-      .define(ClusterAclJsonFilePathProp, STRING, Defaults.ClusterAclJsonFilePath, LOW, ClusterAclJsonFilePathDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -536,7 +531,6 @@ object KafkaConfig {
       /************* Authorizer Configuration ***********/
       authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
       superUser =  parsed.get(SuperUserProp).asInstanceOf[String],
-      clusterAclJsonFilePath =  parsed.get(ClusterAclJsonFilePathProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -682,7 +676,6 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   /************* Authorizer Configuration ***********/
                   val authorizerClassName: String = Defaults.AuthorizerClassName,
                   val superUser: String = Defaults.SuperUser,
-                  val clusterAclJsonFilePath: String = Defaults.ClusterAclJsonFilePath,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -911,7 +904,6 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     /************* Authorizer Configuration ***********/
     props.put(AuthorizerClassNameProp, authorizerClassName.toString)
     props.put(SuperUserProp, superUser.toString)
-    props.put(ClusterAclJsonFilePathProp, clusterAclJsonFilePath.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)
