@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "acls": [
+    {
+      "hosts": [
+        "host1",
+        "host2"
+      ],
+      "permissionType": "DENY",
+      "operations": [
+        "READ",
+        "WRITE"
+      ],
+      "principal": ["user:alice", "user:bob"]
+    },
+    {
+      "hosts": [
+        "*"
+      ],
+      "permissionType": "ALLOW",
+      "operations": [
+        "READ",
+        "WRITE"
+      ],
+      "principal": ["user:bob"]
+    },
+    {
+      "hosts": [
+        "host1",
+        "host2"
+      ],
+      "permissionType": "DENY",
+      "operations": [
+        "read"
+      ],
+      "principal": ["user:bob"]
+    }
+  ]
+}

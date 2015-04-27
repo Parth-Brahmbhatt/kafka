@@ -169,6 +169,7 @@ class KafkaConfigConfigDefTest extends JUnit3Suite {
         case KafkaConfig.NumIoThreadsProp => expected.setProperty(name, atLeastOneIntProp)
         case KafkaConfig.BackgroundThreadsProp => expected.setProperty(name, atLeastOneIntProp)
         case KafkaConfig.QueuedMaxRequestsProp => expected.setProperty(name, atLeastOneIntProp)
+        case KafkaConfig.BrokerAuthenticationEnableProp => false
 
         case KafkaConfig.PortProp => expected.setProperty(name, "1234")
         case KafkaConfig.HostNameProp => expected.setProperty(name, nextString(10))
@@ -272,6 +273,9 @@ class KafkaConfigConfigDefTest extends JUnit3Suite {
         case KafkaConfig.NumIoThreadsProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number", "0")
         case KafkaConfig.BackgroundThreadsProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number", "0")
         case KafkaConfig.QueuedMaxRequestsProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number", "0")
+
+        case KafkaConfig.AuthorizerClassNameProp => // ignore string
+        case KafkaConfig.SuperUserProp => //ignore String
 
         case KafkaConfig.PortProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number")
         case KafkaConfig.HostNameProp => // ignore string
