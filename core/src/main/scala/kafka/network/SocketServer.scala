@@ -23,6 +23,8 @@ import java.util.concurrent.atomic._
 import java.net._
 import java.io._
 import java.nio.channels._
+import java.security.Principal
+import com.sun.security.auth.UserPrincipal
 
 import kafka.cluster.EndPoint
 import org.apache.kafka.common.protocol.SecurityProtocol
@@ -442,6 +444,7 @@ private[kafka] class Processor(val id: Int,
     var curr = requestChannel.receiveResponse(id)
     while(curr != null) {
       val key = curr.request.requestKey.asInstanceOf[SelectionKey]
+      val cnxn = key.attachment().asInstanceOf[KafkaCnxn]
       try {
         curr.responseAction match {
           case RequestChannel.NoOpAction => {
@@ -450,12 +453,14 @@ private[kafka] class Processor(val id: Int,
             curr.request.updateRequestMetrics
             trace("Socket server received empty response to send, registering for read: " + curr)
             key.interestOps(SelectionKey.OP_READ)
-            key.attach(null)
+            cnxn.response = null
+            key.attach(cnxn)
           }
           case RequestChannel.SendAction => {
             trace("Socket server received response to send, registering for write: " + curr)
             key.interestOps(SelectionKey.OP_WRITE)
-            key.attach(curr)
+            cnxn.response = curr
+            key.attach(cnxn)
           }
           case RequestChannel.CloseConnectionAction => {
             curr.request.updateRequestMetrics
@@ -491,7 +496,11 @@ private[kafka] class Processor(val id: Int,
     while(!newConnections.isEmpty) {
       val channel = newConnections.poll()
       debug("Processor " + id + " listening to new connection from " + channel.socket.getRemoteSocketAddress)
-      channel.register(selector, SelectionKey.OP_READ)
+      val key = channel.register(selector, SelectionKey.OP_READ)
+
+      val cnxn = new KafkaCnxn(principal = new UserPrincipal("nobody"), transmit = null, response = null);
+      key.attach(cnxn)
+
     }
   }
 
@@ -501,22 +510,28 @@ private[kafka] class Processor(val id: Int,
   def read(key: SelectionKey) {
     lruConnections.put(key, currentTimeNanos)
     val socketChannel = channelFor(key)
-    var receive = key.attachment.asInstanceOf[Receive]
-    if(key.attachment == null) {
+    val cnxn = key.attachment.asInstanceOf[KafkaCnxn]
+    var receive = cnxn.transmit.asInstanceOf[Receive]
+    if(receive == null) {
       receive = new BoundedByteBufferReceive(maxRequestSize)
-      key.attach(receive)
+      cnxn.transmit = receive
+      key.attach(cnxn)
     }
     val read = receive.readFrom(socketChannel)
     val address = socketChannel.socket.getRemoteSocketAddress()
+    val hostname = socketChannel.socket.getInetAddress.getCanonicalHostName
     trace(read + " bytes read from " + address)
     if(read < 0) {
       close(key)
     } else if(receive.complete) {
       val port = socketChannel.socket().getLocalPort
       val protocol = portToProtocol.get(port)
-      val req = RequestChannel.Request(processor = id, requestKey = key, buffer = receive.buffer, startTimeMs = time.milliseconds, remoteAddress = address, securityProtocol = protocol)
+      val session = RequestChannel.Session(cnxn.principal,hostname)
+      val req = RequestChannel.Request(processor = id, session = session, requestKey = key, buffer = receive.buffer, startTimeMs = time.milliseconds, remoteAddress = address, securityProtocol = protocol)
       requestChannel.sendRequest(req)
-      key.attach(null)
+      cnxn.transmit = null
+      key.attach(cnxn)
+
       // explicitly reset interest ops to not READ, no need to wake up the selector just yet
       key.interestOps(key.interestOps & (~SelectionKey.OP_READ))
     } else {
@@ -532,7 +547,8 @@ private[kafka] class Processor(val id: Int,
    */
   def write(key: SelectionKey) {
     val socketChannel = channelFor(key)
-    val response = key.attachment().asInstanceOf[RequestChannel.Response]
+    val cnxn = key.attachment().asInstanceOf[KafkaCnxn]
+    val response = cnxn.response
     val responseSend = response.responseSend
     if(responseSend == null)
       throw new IllegalStateException("Registered for write interest but no response attached to key.")
@@ -540,7 +556,8 @@ private[kafka] class Processor(val id: Int,
     trace(written + " bytes written to " + socketChannel.socket.getRemoteSocketAddress() + " using key " + key)
     if(responseSend.complete) {
       response.request.updateRequestMetrics()
-      key.attach(null)
+      cnxn.transmit = null
+      key.attach(cnxn)
       trace("Finished writing, registering for read on connection " + socketChannel.socket.getRemoteSocketAddress())
       key.interestOps(SelectionKey.OP_READ)
     } else {
@@ -599,3 +616,5 @@ class ConnectionQuotas(val defaultMax: Int, overrideQuotas: Map[String, Int]) {
 }
 
 class TooManyConnectionsException(val ip: InetAddress, val count: Int) extends KafkaException("Too many connections from %s (maximum = %d)".format(ip, count))
+
+case class KafkaCnxn(val principal: Principal, var transmit: Transmission, var response: RequestChannel.Response);
