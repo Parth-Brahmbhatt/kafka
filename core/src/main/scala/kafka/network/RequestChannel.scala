@@ -17,6 +17,7 @@
 
 package kafka.network
 
+import java.security.Principal
 import java.util.concurrent._
 import kafka.metrics.KafkaMetricsGroup
 import com.yammer.metrics.core.Gauge
@@ -43,7 +44,7 @@ object RequestChannel extends Logging {
     byteBuffer
   }
 
-  case class Request(processor: Int, requestKey: Any, private var buffer: ByteBuffer, startTimeMs: Long, remoteAddress: SocketAddress = new InetSocketAddress(0), securityProtocol: SecurityProtocol) {
+  case class Request(processor: Int, requestKey: Any, session: Session = null, private var buffer: ByteBuffer, startTimeMs: Long, remoteAddress: SocketAddress = new InetSocketAddress(0), securityProtocol: SecurityProtocol) {
     @volatile var requestDequeueTimeMs = -1L
     @volatile var apiLocalCompleteTimeMs = -1L
     @volatile var responseCompleteTimeMs = -1L
@@ -108,7 +109,9 @@ object RequestChannel extends Logging {
       }
     }
   }
-  
+
+  case class Session(principal: Principal, host: String)
+
   case class Response(processor: Int, request: Request, responseSend: Send, responseAction: ResponseAction) {
     request.responseCompleteTimeMs = SystemTime.milliseconds
 
