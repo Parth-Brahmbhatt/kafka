@@ -85,9 +85,15 @@ object ConsoleConsumer extends Logging {
       .describedAs("metrics dictory")
       .ofType(classOf[java.lang.String])
 
+    val kerberosEnableOpt = parser.accepts("kerberos-enable", "Enable kerberos.")
+      .withRequiredArg
+      .describedAs("kerberos.enable")
+      .ofType(classOf[java.lang.Boolean])
+      .defaultsTo(false)
+
     if(args.length == 0)
       CommandLineUtils.printUsageAndDie(parser, "The console consumer is a tool that reads data from Kafka and outputs it to standard output.")
-      
+
     var groupIdPassed = true
     val options: OptionSet = tryParse(parser, args)
     CommandLineUtils.checkRequiredArgs(parser, options, zkConnectOpt)
@@ -118,6 +124,7 @@ object ConsoleConsumer extends Logging {
       Utils.loadProps(options.valueOf(consumerConfigOpt))
     else
       new Properties()
+    val kerberosEnable = options.valueOf(kerberosEnableOpt)
 
     if(!consumerProps.containsKey("group.id")) {
       consumerProps.put("group.id","console-consumer-" + new Random().nextInt(100000))
@@ -125,6 +132,7 @@ object ConsoleConsumer extends Logging {
     }
     consumerProps.put("auto.offset.reset", if(options.has(resetBeginningOpt)) "smallest" else "largest")
     consumerProps.put("zookeeper.connect", options.valueOf(zkConnectOpt))
+    consumerProps.put("kerberos.enable", kerberosEnable.toString)
 
     if (!checkZkPathExists(options.valueOf(zkConnectOpt),"/brokers/ids")) {
       System.err.println("No brokers found.")

@@ -31,11 +31,14 @@ import org.I0Itec.zkclient.ZkClient
 import kafka.controller.{ControllerStats, KafkaController}
 import kafka.cluster.{EndPoint, Broker}
 import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
-import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException}
+import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException,
+                    KerberosLoginManager, ProtocolAndAuth}
 import kafka.network.{Receive, BlockingChannel, SocketServer}
 import kafka.metrics.KafkaMetricsGroup
 import com.yammer.metrics.core.Gauge
 import kafka.coordinator.ConsumerCoordinator
+import org.apache.kafka.common.security.AuthUtils
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
@@ -71,7 +74,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
   var kafkaHealthcheck: KafkaHealthcheck = null
   val metadataCache: MetadataCache = new MetadataCache(config.brokerId)
 
-
+  var protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)
 
   var zkClient: ZkClient = null
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -113,6 +116,12 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         logManager = createLogManager(zkClient, brokerState)
         logManager.startup()
 
+        /* start kerberosLoginManager */
+        if (config.brokerAuthenticationEnable) {
+          KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_SERVER)
+          protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, true)
+        }
+
         /* generate brokerId */
         config.brokerId =  getBrokerId
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
@@ -126,7 +135,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                                         config.socketRequestMaxBytes,
                                         config.maxConnectionsPerIp,
                                         config.connectionsMaxIdleMs,
-                                        config.maxConnectionsPerIpOverrides)
+                                        config.maxConnectionsPerIpOverrides,
+                                        config.brokerAuthenticationEnable)
           socketServer.startup()
 
           /* start replica manager */
@@ -252,7 +262,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                   broker.getBrokerEndPoint(config.interBrokerSecurityProtocol).port,
                   BlockingChannel.UseDefaultBufferSize,
                   BlockingChannel.UseDefaultBufferSize,
-                  config.controllerSocketTimeoutMs)
+                  config.controllerSocketTimeoutMs,
+                  protocolAndAuth)
                 channel.connect()
                 prevController = broker
               }

@@ -126,6 +126,8 @@ object Defaults {
   val DeleteTopicEnable = false
 
   val CompressionType = "producer"
+
+  val BrokerAuthenticationEnable = false
 }
 
 object KafkaConfig {
@@ -232,7 +234,7 @@ object KafkaConfig {
 
   val DeleteTopicEnableProp = "delete.topic.enable"
   val CompressionTypeProp = "compression.type"
-
+  val BrokerAuthenticationEnableProp = "broker.authentication.enable"
 
   /* Documentation */
   /** ********* Zookeeper Configuration ***********/
@@ -362,8 +364,10 @@ object KafkaConfig {
   val DeleteTopicEnableDoc = "Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off"
   val CompressionTypeDoc = "Specify the final compression type for a given topic. This configuration accepts the standard compression codecs " +
     "('gzip', 'snappy', lz4). It additionally accepts 'uncompressed' which is equivalent to no compression; and " +
-    "'producer' which means retain the original compression codec set by the producer."
+  "'producer' which means retain the original compression codec set by the producer."
 
+  /** ********* Authentication Configuration ***********/
+  val BrokerAuthenticationEnableDoc = "Enable Broker Authentication."
 
   private val configDef = {
     import ConfigDef.Range._
@@ -479,6 +483,7 @@ object KafkaConfig {
       .define(OffsetCommitRequiredAcksProp, SHORT, Defaults.OffsetCommitRequiredAcks, HIGH, OffsetCommitRequiredAcksDoc)
       .define(DeleteTopicEnableProp, BOOLEAN, Defaults.DeleteTopicEnable, HIGH, DeleteTopicEnableDoc)
       .define(CompressionTypeProp, STRING, Defaults.CompressionType, HIGH, CompressionTypeDoc)
+      .define(BrokerAuthenticationEnableProp, BOOLEAN, Defaults.BrokerAuthenticationEnable, HIGH, BrokerAuthenticationEnableDoc)
   }
 
   def configNames() = {
@@ -598,7 +603,8 @@ object KafkaConfig {
       offsetCommitTimeoutMs = parsed.get(OffsetCommitTimeoutMsProp).asInstanceOf[Int],
       offsetCommitRequiredAcks = parsed.get(OffsetCommitRequiredAcksProp).asInstanceOf[Short],
       deleteTopicEnable = parsed.get(DeleteTopicEnableProp).asInstanceOf[Boolean],
-      compressionType = parsed.get(CompressionTypeProp).asInstanceOf[String]
+      compressionType = parsed.get(CompressionTypeProp).asInstanceOf[String],
+      brokerAuthenticationEnable = parsed.get(BrokerAuthenticationEnableProp).asInstanceOf[Boolean]
     )
   }
 
@@ -742,7 +748,8 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   val offsetCommitRequiredAcks: Short = Defaults.OffsetCommitRequiredAcks,
 
                   val deleteTopicEnable: Boolean = Defaults.DeleteTopicEnable,
-                  val compressionType: String = Defaults.CompressionType
+                  val compressionType: String = Defaults.CompressionType,
+                  val brokerAuthenticationEnable: Boolean = Defaults.BrokerAuthenticationEnable
                    ) {
 
   val zkConnectionTimeoutMs: Int = _zkConnectionTimeoutMs.getOrElse(zkSessionTimeoutMs)

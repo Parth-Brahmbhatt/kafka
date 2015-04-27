@@ -93,6 +93,7 @@ object ConsoleProducer {
     props.put("serializer.class", config.valueEncoderClass)
     props.put("send.buffer.bytes", config.socketBuffer.toString)
     props.put("topic.metadata.refresh.interval.ms", config.metadataExpiryMs.toString)
+    props.put("kerberos.enable", config.kerberosEnable.toString)
     props.put("client.id", "console-producer")
 
     props
@@ -236,6 +237,11 @@ object ConsoleProducer {
             .withRequiredArg
             .describedAs("producer_prop")
             .ofType(classOf[String])
+    val kerberosEnableOpt = parser.accepts("kerberos-enable", "Enable kerberos.")
+      .withRequiredArg
+      .describedAs("kerberos.enable")
+      .ofType(classOf[java.lang.Boolean])
+      .defaultsTo(false)
     val useNewProducerOpt = parser.accepts("new-producer", "Use the new producer implementation.")
 
     val options = parser.parse(args : _*)
@@ -274,6 +280,7 @@ object ConsoleProducer {
     val maxPartitionMemoryBytes = options.valueOf(maxPartitionMemoryBytesOpt)
     val metadataExpiryMs = options.valueOf(metadataExpiryMsOpt)
     val metadataFetchTimeoutMs = options.valueOf(metadataFetchTimeoutMsOpt)
+    val kerberosEnable = options.valueOf(kerberosEnableOpt)
   }
 
   trait MessageReader {

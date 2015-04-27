@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -22,7 +22,7 @@ import scala.collection._
 import kafka.cluster._
 import kafka.api._
 import kafka.producer._
-import kafka.common.{ErrorMapping, KafkaException}
+import kafka.common.{ErrorMapping, KafkaException, ProtocolAndAuth}
 import kafka.utils.{CoreUtils, Logging}
 import java.util.Properties
 import util.Random
@@ -85,17 +85,19 @@ object ClientUtils extends Logging{
    * @return topic metadata response
    */
   def fetchTopicMetadata(topics: Set[String], brokers: Seq[BrokerEndPoint], clientId: String, timeoutMs: Int,
-                         correlationId: Int = 0): TopicMetadataResponse = {
+                         correlationId: Int = 0, protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)): TopicMetadataResponse = {
     val props = new Properties()
     props.put("metadata.broker.list", brokers.map(_.connectionString).mkString(","))
     props.put("client.id", clientId)
     props.put("request.timeout.ms", timeoutMs.toString)
+    if (protocolAndAuth.authentication)
+      props.put("kerberos.enable", "true")
     val producerConfig = new ProducerConfig(props)
     fetchTopicMetadata(topics, brokers, producerConfig, correlationId)
   }
 
   /**
-   * Parse a list of broker urls in the form host1:port1, host2:port2, ... 
+   * Parse a list of broker urls in the form host1:port1, host2:port2, ...
    */
   def parseBrokerList(brokerListStr: String): Seq[BrokerEndPoint] = {
     val brokersStr = CoreUtils.parseCsvList(brokerListStr)
@@ -108,7 +110,7 @@ object ClientUtils extends Logging{
    /**
     * Creates a blocking channel to a random broker
     */
-   def channelToAnyBroker(zkClient: ZkClient, socketTimeoutMs: Int = 3000) : BlockingChannel = {
+  def channelToAnyBroker(zkClient: ZkClient, socketTimeoutMs: Int = 3000, protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)) : BlockingChannel = {
      var channel: BlockingChannel = null
      var connected = false
      while (!connected) {
@@ -116,7 +118,7 @@ object ClientUtils extends Logging{
        Random.shuffle(allBrokers).find { broker =>
          trace("Connecting to broker %s:%d.".format(broker.host, broker.port))
          try {
-           channel = new BlockingChannel(broker.host, broker.port, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs)
+           channel = new BlockingChannel(broker.host, broker.port, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs, protocolAndAuth)
            channel.connect()
            debug("Created channel to broker %s:%d.".format(channel.host, channel.port))
            true
@@ -137,8 +139,9 @@ object ClientUtils extends Logging{
    /**
     * Creates a blocking channel to the offset manager of the given group
     */
-   def channelToOffsetManager(group: String, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000) = {
-     var queryChannel = channelToAnyBroker(zkClient)
+  def channelToOffsetManager(group: String, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000,
+                             protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)) = {
+     var queryChannel = channelToAnyBroker(zkClient, protocolAndAuth = protocolAndAuth)
 
      var offsetManagerChannelOpt: Option[BlockingChannel] = None
 
@@ -149,7 +152,7 @@ object ClientUtils extends Logging{
        while (!coordinatorOpt.isDefined) {
          try {
            if (!queryChannel.isConnected)
-             queryChannel = channelToAnyBroker(zkClient)
+             queryChannel = channelToAnyBroker(zkClient, protocolAndAuth = protocolAndAuth)
            debug("Querying %s:%d to locate offset manager for %s.".format(queryChannel.host, queryChannel.port, group))
            queryChannel.send(ConsumerMetadataRequest(group))
            val response = queryChannel.receive()
@@ -181,7 +184,8 @@ object ClientUtils extends Logging{
            offsetManagerChannel = new BlockingChannel(coordinator.host, coordinator.port,
                                                       BlockingChannel.UseDefaultBufferSize,
                                                       BlockingChannel.UseDefaultBufferSize,
-                                                      socketTimeoutMs)
+                                                      socketTimeoutMs,
+                                                      protocolAndAuth)
            offsetManagerChannel.connect()
            offsetManagerChannelOpt = Some(offsetManagerChannel)
            queryChannel.disconnect()

@@ -21,8 +21,9 @@ import kafka.api._
 import kafka.network.{BlockingChannel, BoundedByteBufferSend, Receive}
 import kafka.utils._
 import java.util.Random
-
+import kafka.common.ProtocolAndAuth
 import org.apache.kafka.common.utils.Utils._
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 object SyncProducer {
   val RequestKey: Short = 0
@@ -37,8 +38,10 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
 
   private val lock = new Object()
   @volatile private var shutdown: Boolean = false
+  private var protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)
+  if(config.kerberosEnable) protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, true)
   private val blockingChannel = new BlockingChannel(config.host, config.port, BlockingChannel.UseDefaultBufferSize,
-    config.sendBufferBytes, config.requestTimeoutMs)
+    config.sendBufferBytes, config.requestTimeoutMs, protocolAndAuth)
   val producerRequestStats = ProducerRequestStatsRegistry.getProducerRequestStats(config.clientId)
 
   trace("Instantiating Scala Sync Producer with properties: %s".format(config.props))

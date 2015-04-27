@@ -35,7 +35,7 @@ class SyncProducerConfig private (val props: VerifiableProperties) extends SyncP
 
 trait SyncProducerConfigShared {
   val props: VerifiableProperties
-  
+
   val sendBufferBytes = props.getInt("send.buffer.bytes", 100*1024)
 
   /* the client application sending the producer requests */
@@ -56,7 +56,9 @@ trait SyncProducerConfigShared {
    * The ack timeout of the producer requests. Value must be non-negative and non-zero
    */
   val requestTimeoutMs = props.getIntInRange("request.timeout.ms", SyncProducerConfig.DefaultAckTimeoutMs,
-                                             (1, Integer.MAX_VALUE))
+    (1, Integer.MAX_VALUE))
+
+  val kerberosEnable = props.getBoolean("kerberos.enable", false)
 }
 
 object SyncProducerConfig {

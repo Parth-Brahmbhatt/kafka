@@ -21,13 +21,15 @@ import kafka.cluster.BrokerEndPoint
 import kafka.server.AbstractFetcherThread
 import kafka.message.ByteBufferMessageSet
 import kafka.api.{Request, OffsetRequest, FetchResponsePartitionData}
-import kafka.common.TopicAndPartition
+import kafka.common.{TopicAndPartition, ProtocolAndAuth}
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 
 class ConsumerFetcherThread(name: String,
                             val config: ConsumerConfig,
                             sourceBroker: BrokerEndPoint,
                             partitionMap: Map[TopicAndPartition, PartitionTopicInfo],
+                            protocolAndAuth: ProtocolAndAuth,
                             val consumerFetcherManager: ConsumerFetcherManager)
         extends AbstractFetcherThread(name = name,
                                       clientId = config.clientId,
@@ -39,7 +41,8 @@ class ConsumerFetcherThread(name: String,
                                       maxWait = config.fetchWaitMaxMs,
                                       minBytes = config.fetchMinBytes,
                                       fetchBackOffMs = config.refreshLeaderBackoffMs,
-                                      isInterruptible = true) {
+                                      isInterruptible = true,
+                                      protocolAndAuth) {
 
   // process fetched data
   def processPartitionData(topicAndPartition: TopicAndPartition, fetchOffset: Long, partitionData: FetchResponsePartitionData) {

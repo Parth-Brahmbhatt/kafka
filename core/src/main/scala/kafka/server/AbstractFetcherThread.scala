@@ -21,7 +21,7 @@ import kafka.cluster.BrokerEndPoint
 import kafka.utils.{Pool, ShutdownableThread}
 import kafka.consumer.{PartitionTopicInfo, SimpleConsumer}
 import kafka.api.{FetchRequest, FetchResponse, FetchResponsePartitionData, FetchRequestBuilder}
-import kafka.common.{KafkaException, ClientIdAndBroker, TopicAndPartition, ErrorMapping}
+import kafka.common.{KafkaException, ClientIdAndBroker, TopicAndPartition, ErrorMapping, ProtocolAndAuth}
 import kafka.utils.DelayedItem
 import kafka.utils.CoreUtils.inLock
 import kafka.message.{InvalidMessageException, ByteBufferMessageSet, MessageAndOffset}
@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.atomic.AtomicLong
 
+import org.apache.kafka.common.protocol.SecurityProtocol
 import com.yammer.metrics.core.Gauge
 
 /**
@@ -39,12 +40,12 @@ import com.yammer.metrics.core.Gauge
  */
 abstract class AbstractFetcherThread(name: String, clientId: String, sourceBroker: BrokerEndPoint, socketTimeout: Int, socketBufferSize: Int,
                                      fetchSize: Int, fetcherBrokerId: Int = -1, maxWait: Int = 0, minBytes: Int = 1, fetchBackOffMs: Int = 0,
-                                     isInterruptible: Boolean = true)
+                                     isInterruptible: Boolean = true, protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false))
   extends ShutdownableThread(name, isInterruptible) {
   private val partitionMap = new mutable.HashMap[TopicAndPartition, PartitionFetchState] // a (topic, partition) -> partitionFetchState map
   private val partitionMapLock = new ReentrantLock
   private val partitionMapCond = partitionMapLock.newCondition()
-  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, socketTimeout, socketBufferSize, clientId)
+  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, socketTimeout, socketBufferSize, clientId, protocolAndAuth)
   private val metricId = new ClientIdAndBroker(clientId, sourceBroker.host, sourceBroker.port)
   val fetcherStats = new FetcherStats(metricId)
   val fetcherLagStats = new FetcherLagStats(metricId)
