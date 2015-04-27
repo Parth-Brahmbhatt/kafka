@@ -21,6 +21,7 @@ import kafka.admin._
 import kafka.log.LogConfig
 import kafka.log.CleanerConfig
 import kafka.log.LogManager
+import kafka.security.auth.Authorizer
 import kafka.utils._
 import java.util.concurrent._
 import atomic.{AtomicInteger, AtomicBoolean}
@@ -154,9 +155,19 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
           consumerCoordinator = new ConsumerCoordinator(config, zkClient)
           consumerCoordinator.startup()
 
+
+          /* Get the authorizer and initialize it if one is specified.*/
+          val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
+            val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
+            authZ.initialize(config)
+            Option(authZ)
+          } else {
+            None
+          }
+
           /* start processing requests */
           apis = new KafkaApis(socketServer.requestChannel, replicaManager, offsetManager, consumerCoordinator,
-            kafkaController, zkClient, config.brokerId, config, metadataCache)
+            kafkaController, zkClient, config.brokerId, config, metadataCache, authorizer)
           requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
           brokerState.newState(RunningAsBroker)
 

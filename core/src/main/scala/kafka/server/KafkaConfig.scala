@@ -42,6 +42,10 @@ object Defaults {
   val BackgroundThreads = 10
   val QueuedMaxRequests = 500
 
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassName = ""
+  val SuperUser = ""
+
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
   val HostName: String = new String("")
@@ -145,6 +149,9 @@ object KafkaConfig {
   val NumIoThreadsProp = "num.io.threads"
   val BackgroundThreadsProp = "background.threads"
   val QueuedMaxRequestsProp = "queued.max.requests"
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassNameProp = "authorizer.class.name"
+  val SuperUserProp = "super.users"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -252,6 +259,9 @@ object KafkaConfig {
   val NumIoThreadsDoc = "The number of io threads that the server uses for carrying out network requests"
   val BackgroundThreadsDoc = "The number of threads to use for various background processing tasks"
   val QueuedMaxRequestsDoc = "The number of queued requests allowed before blocking the network threads"
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
+  val SuperUserDoc = "Comma seperated list of users that will have super user access to the cluster and all the topics."
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -392,6 +402,10 @@ object KafkaConfig {
       .define(BackgroundThreadsProp, INT, Defaults.BackgroundThreads, atLeast(1), HIGH, BackgroundThreadsDoc)
       .define(QueuedMaxRequestsProp, INT, Defaults.QueuedMaxRequests, atLeast(1), HIGH, QueuedMaxRequestsDoc)
 
+      /************* Authorizer Configuration ***********/
+      .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
+      .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
+
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
       .define(HostNameProp, STRING, Defaults.HostName, HIGH, HostNameDoc)
@@ -512,6 +526,10 @@ object KafkaConfig {
       numIoThreads = parsed.get(NumIoThreadsProp).asInstanceOf[Int],
       backgroundThreads = parsed.get(BackgroundThreadsProp).asInstanceOf[Int],
       queuedMaxRequests = parsed.get(QueuedMaxRequestsProp).asInstanceOf[Int],
+
+      /************* Authorizer Configuration ***********/
+      authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
+      superUser =  parsed.get(SuperUserProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -653,6 +671,10 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   val numIoThreads: Int = Defaults.NumIoThreads,
                   val backgroundThreads: Int = Defaults.BackgroundThreads,
                   val queuedMaxRequests: Int = Defaults.QueuedMaxRequests,
+
+                  /************* Authorizer Configuration ***********/
+                  val authorizerClassName: String = Defaults.AuthorizerClassName,
+                  val superUser: String = Defaults.SuperUser,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -876,6 +898,10 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     props.put(NumIoThreadsProp, numIoThreads.toString)
     props.put(BackgroundThreadsProp, backgroundThreads.toString)
     props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
+
+    /************* Authorizer Configuration ***********/
+    props.put(AuthorizerClassNameProp, authorizerClassName.toString)
+    props.put(SuperUserProp, superUser.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)
