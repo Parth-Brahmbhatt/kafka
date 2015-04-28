@@ -43,8 +43,6 @@ public class PlainTextTransportLayer implements TransportLayer {
 
     public PlainTextTransportLayer(SocketChannel socketChannel) throws IOException {
         this.socketChannel = socketChannel;
-        this.inStream = new DataInputStream(socketChannel.socket().getInputStream());
-        this.outStream = new DataOutputStream(socketChannel.socket().getOutputStream());
     }
 
 
@@ -118,16 +116,21 @@ public class PlainTextTransportLayer implements TransportLayer {
         return 0;
     }
 
-    public DataInputStream inStream () {
-        return inStream;
-    }
-
-    public DataOutputStream outStream() {
-        return outStream;
-    }
 
     public Principal getPeerPrincipal() {
         return new UserPrincipal("ANONYMOUS");
+    }
+
+    public DataInputStream inStream() throws IOException {
+        if (inStream == null)
+            this.inStream = new DataInputStream(socketChannel.socket().getInputStream());
+        return inStream;
+    }
+
+    public DataOutputStream outStream() throws IOException {
+        if (outStream == null)
+            this.outStream = new DataOutputStream(socketChannel.socket().getOutputStream());
+        return outStream;
     }
 
 }

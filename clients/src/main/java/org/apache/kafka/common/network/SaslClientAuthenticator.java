@@ -80,6 +80,7 @@ public class SaslClientAuthenticator implements Authenticator {
         this.transportLayer = transportLayer;
         this.subject = subject;
         this.host = host;
+        this.servicePrincipal = servicePrincipal;
     }
 
     public void init() {
@@ -113,15 +114,13 @@ public class SaslClientAuthenticator implements Authenticator {
         // final String serviceName = serviceKerberosName.getServiceName();
         // final String serviceHostname = serviceKerberosName.getHostName();
         final String clientPrincipalName = clientKerberosName.toString();
-        final String serviceName = "kafka";
-        final String serviceHostname = "hw10843.local";
         try {
             saslClient = Subject.doAs(subject,new PrivilegedExceptionAction<SaslClient>() {
                     public SaslClient run() throws SaslException {
                         LOG.info("Client will use GSSAPI as SASL mechanism.");
                         String[] mechs = {"GSSAPI"};
-                        LOG.debug("creating sasl client: client="+clientPrincipalName+";service="+serviceName+";serviceHostname="+serviceHostname);
-                        SaslClient saslClient = Sasl.createSaslClient(mechs,clientPrincipalName,serviceName,serviceHostname,null,null);
+                        LOG.debug("creating sasl client: client="+clientPrincipalName+";service="+servicePrincipal+";serviceHostname="+host);
+                        SaslClient saslClient = Sasl.createSaslClient(mechs,clientPrincipalName,servicePrincipal,host,null,null);
                         return saslClient;
                     }
                 });

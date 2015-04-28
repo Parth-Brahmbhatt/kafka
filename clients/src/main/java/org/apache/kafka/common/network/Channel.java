@@ -112,11 +112,11 @@ public class Channel implements ReadableByteChannel, GatheringByteChannel {
         return transportLayer.isReady() && authenticator.isComplete();
     }
 
-    public DataInputStream getInputStream() {
+    public DataInputStream getInputStream() throws IOException {
         return transportLayer.inStream();
     }
 
-    public DataOutputStream getOutputStream() {
+    public DataOutputStream getOutputStream() throws IOException {
         return transportLayer.outStream();
     }
 }

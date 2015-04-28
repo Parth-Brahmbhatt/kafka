@@ -70,9 +70,9 @@ public interface TransportLayer {
     */
     public int handshake(boolean read, boolean write) throws IOException;
 
-    public DataInputStream inStream();
+    public DataInputStream inStream() throws IOException;
 
-    public DataOutputStream outStream();
+    public DataOutputStream outStream() throws IOException;
 
     public boolean flush(ByteBuffer buffer) throws IOException;
 
