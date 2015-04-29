@@ -204,7 +204,6 @@ project(':core') {
   def (major, minor, trivial) = scalaVersion.tokenize('.')
 
   dependencies {
-    println "wtf $zookeeperVersion"
     compile project(':clients')
     compile "org.scala-lang:scala-library:$scalaVersion"
     compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
