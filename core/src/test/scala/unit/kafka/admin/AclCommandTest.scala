@@ -31,7 +31,7 @@ import org.scalatest.junit.JUnit3Suite
 class AclCommandTest extends JUnit3Suite with ZooKeeperTestHarness with Logging {
 
   @Test
-  def testAddAcl() {
+  def testAclCli() {
     val topic = "test"
     val user1: KafkaPrincipal = KafkaPrincipal.fromString("user:test1")
     val user2: KafkaPrincipal = KafkaPrincipal.fromString("user:test2")
@@ -54,10 +54,10 @@ class AclCommandTest extends JUnit3Suite with ZooKeeperTestHarness with Logging 
       "--operations", operation1.name + AclCommand.delimter + operation2.name)
 
     AclCommand.main(args :+ "--add")
-    assertEquals(acls, getAuthorizer.getAcls(topic))
+    assertEquals(acls, getAuthorizer.getAcls(new Resource(ResourceType.TOPIC, topic)))
 
     AclCommand.main(args :+ "--remove")
-    assertTrue(getAuthorizer.getAcls(topic).isEmpty)
+    assertTrue(getAuthorizer.getAcls(new Resource(ResourceType.TOPIC, topic)).isEmpty)
   }
 
   def getAuthorizer : Authorizer = {

@@ -125,13 +125,13 @@ object AclCommand {
     acls.toSet
   }
 
-  private def getResource(opts: AclCommandOptions) : String = {
+  private def getResource(opts: AclCommandOptions) : Resource = {
     if(opts.options.has(opts.topicOpt))
-      return opts.options.valueOf(opts.topicOpt).toString
+      return new Resource(ResourceType.TOPIC, opts.options.valueOf(opts.topicOpt).toString)
     else if(opts.options.has(opts.clusterOpt))
-      return "kafka-cluster"
+      return Resource.clusterResource
     else if(opts.options.has(opts.groupOpt))
-      return opts.options.valueOf(opts.groupOpt).toString
+      return new Resource(ResourceType.GROUP, opts.options.valueOf(opts.groupOpt).toString)
     else
       println("You must provide at least one of the resource argument from --topic <topic>, --cluster or --consumer-group <group>")
       System.exit(1)
