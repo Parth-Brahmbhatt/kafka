@@ -41,7 +41,7 @@ trait Authorizer {
    * @param resource Resource the client is trying to access.
    * @return
    */
-  def authorize(session: Session, operation: Operation, resource: String): Boolean
+  def authorize(session: Session, operation: Operation, resource: Resource): Boolean
 
   /**
    * add the acls to resource, this is an additive operation so existing acls will not be overwritten, instead these new
@@ -49,7 +49,7 @@ trait Authorizer {
    * @param acls set of acls to add to existing acls
    * @param resource the resource to which these acls should be attached.
    */
-  def addAcls(acls: Set[Acl], resource: String): Unit
+  def addAcls(acls: Set[Acl], resource: Resource): Unit
 
   /**
    * remove these acls from the resource.
@@ -57,21 +57,21 @@ trait Authorizer {
    * @param resource resource from which the acls should be removed.
    * @return true if some acl got removed, false if no acl was removed.
    */
-  def removeAcls(acls: Set[Acl], resource: String): Boolean
+  def removeAcls(acls: Set[Acl], resource: Resource): Boolean
 
   /**
    * remove a resource along with all of its acls from acl store.
    * @param resource
    * @return
    */
-  def removeAcls(resource: String): Boolean
+  def removeAcls(resource: Resource): Boolean
 
   /**
    * get set of acls for this resource
    * @param resource
    * @return empty set if no acls are found, otherwise the acls for the resource.
    */
-  def getAcls(resource: String): Set[Acl]
+  def getAcls(resource: Resource): Set[Acl]
 
   /**
    * get the acls for this principal.

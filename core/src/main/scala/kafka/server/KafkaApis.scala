@@ -18,7 +18,7 @@
 package kafka.server
 
 import kafka.message.MessageSet
-import kafka.security.auth.{Operation, Authorizer}
+import kafka.security.auth.{ResourceType, Resource, Operation, Authorizer}
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.requests.{JoinGroupResponse, JoinGroupRequest, HeartbeatRequest, HeartbeatResponse, ResponseHeader}
 import org.apache.kafka.common.TopicPartition
@@ -100,7 +100,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, Resource.clusterResource)) {
       val leaderAndIsrResponse = new LeaderAndIsrResponse(leaderAndIsrRequest.correlationId, Map.empty, ErrorMapping.AuthorizationCode)
       requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(leaderAndIsrResponse)))
       return
@@ -123,8 +123,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, Resource.clusterResource)) {
       val stopReplicaResponse = new StopReplicaResponse(stopReplicaRequest.correlationId, Map.empty, ErrorMapping.AuthorizationCode)
       requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(stopReplicaResponse)))
       return
@@ -141,9 +140,9 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     if(authorizer.isDefined) {
       val unauthorizedTopicAndPartition = updateMetadataRequest.partitionStateInfos.filterKeys(
-        topicAndPartition => !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, topicAndPartition.topic)).keys
+        topicAndPartition => !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, Resource.clusterResource)).keys
       //In this case the response does not allow to selectively report success/failure so if authorization fails, we fail the entire request.
-      if (!unauthorizedTopicAndPartition.isEmpty) {
+      if (unauthorizedTopicAndPartition.nonEmpty) {
         val updateMetadataResponse = new UpdateMetadataResponse(updateMetadataRequest.correlationId, ErrorMapping.AuthorizationCode)
         requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(updateMetadataResponse)))
         return
@@ -162,12 +161,10 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
-    if(authorizer.isDefined) {
-      if (!authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, null)) {
-        val controlledShutdownResponse = new ControlledShutdownResponse(controlledShutdownRequest.correlationId, ErrorMapping.AuthorizationCode,  Set.empty)
-        requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(controlledShutdownResponse)))
-        return
-      }
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CLUSTER_ACTION, Resource.clusterResource)) {
+      val controlledShutdownResponse = new ControlledShutdownResponse(controlledShutdownRequest.correlationId, ErrorMapping.AuthorizationCode,  Set.empty)
+      requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(controlledShutdownResponse)))
+      return
     }
 
     val partitionsRemaining = controller.shutdownBroker(controlledShutdownRequest.brokerId)
@@ -279,7 +276,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val produceRequest = request.requestObj.asInstanceOf[ProducerRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  produceRequest.data.partition(
-      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.WRITE, mapEntry._1.topic))
+      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.WRITE, new Resource(ResourceType.TOPIC,mapEntry._1.topic)))
 
     // the callback for sending a produce response
     def sendResponseCallback(responseStatus: Map[TopicAndPartition, ProducerResponseStatus]) {
@@ -339,7 +336,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val fetchRequest = request.requestObj.asInstanceOf[FetchRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  fetchRequest.requestInfo.partition(
-      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.READ, mapEntry._1.topic))
+      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.READ, new Resource(ResourceType.TOPIC,mapEntry._1.topic)))
 
     val unauthorizedResponseStatus = unauthorizedRequestInfo.mapValues(_ => FetchResponsePartitionData(ErrorMapping.AuthorizationCode, -1, MessageSet.Empty))
 
@@ -381,7 +378,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val offsetRequest = request.requestObj.asInstanceOf[OffsetRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  offsetRequest.requestInfo.partition(
-      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, mapEntry._1.topic))
+      mapEntry => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, new Resource(ResourceType.TOPIC,mapEntry._1.topic)))
 
     val unauthorizedResponseStatus = unauthorizedRequestInfo.mapValues(_ => PartitionOffsetsResponse(ErrorMapping.AuthorizationCode, Nil))
 
@@ -529,7 +526,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataRequest]
     val topics = metadataRequest.topics.toSet
 
-    val (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, topic))
+    val (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Operation.DESCRIBE, new Resource(ResourceType.TOPIC,topic)))
 
     val unauthorizedTopicMetaData = unauthorizedTopics.map(topic => new TopicMetadata(topic, Seq.empty[PartitionMetadata], ErrorMapping.AuthorizationCode))
 
@@ -607,7 +604,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val partition = offsetManager.partitionFor(consumerMetadataRequest.group)
 
     //TODO: this can in turn create the topic, so we should check the create permissions if the config is enabled and topic is non existent.
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.DESCRIBE, OffsetManager.OffsetsTopicName)) {
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.DESCRIBE, new Resource(ResourceType.TOPIC, OffsetManager.OffsetsTopicName))) {
       val errorResponse = ConsumerMetadataResponse(None, ErrorMapping.ConsumerCoordinatorNotAvailableCode, consumerMetadataRequest.correlationId)
       requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(errorResponse)))
       return
@@ -666,7 +663,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
     val respHeader = new ResponseHeader(request.header.correlationId)
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.READ, heartbeatRequest.groupId())) {
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.READ, new Resource(ResourceType.GROUP, heartbeatRequest.groupId()))) {
       val heartbeatResponse = new HeartbeatResponse(ErrorMapping.AuthorizationCode)
       requestChannel.sendResponse(new Response(request, new BoundedByteBufferSend(respHeader, heartbeatResponse)))
       return
