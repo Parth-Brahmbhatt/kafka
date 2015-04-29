@@ -510,6 +510,7 @@ private[kafka] class Processor(val id: Int,
   def read(key: SelectionKey) {
     lruConnections.put(key, currentTimeNanos)
     val socketChannel = channelFor(key)
+    val channel: Channel = socketContainer.get(socketChannel)
     val cnxn = key.attachment.asInstanceOf[KafkaCnxn]
     var receive = cnxn.transmit.asInstanceOf[Receive]
     if(receive == null) {
@@ -519,6 +520,7 @@ private[kafka] class Processor(val id: Int,
     }
     val read = receive.readFrom(socketChannel)
     val address = socketChannel.socket.getRemoteSocketAddress()
+    val principal = channel.userPrincipal()
     val hostname = socketChannel.socket.getInetAddress.getCanonicalHostName
     trace(read + " bytes read from " + address)
     if(read < 0) {
@@ -526,7 +528,7 @@ private[kafka] class Processor(val id: Int,
     } else if(receive.complete) {
       val port = socketChannel.socket().getLocalPort
       val protocol = portToProtocol.get(port)
-      val session = RequestChannel.Session(cnxn.principal,hostname)
+      val session = RequestChannel.Session(principal,hostname)
       val req = RequestChannel.Request(processor = id, session = session, requestKey = key, buffer = receive.buffer, startTimeMs = time.milliseconds, remoteAddress = address, securityProtocol = protocol)
       requestChannel.sendRequest(req)
       cnxn.transmit = null
