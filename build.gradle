@@ -204,9 +204,10 @@ project(':core') {
   def (major, minor, trivial) = scalaVersion.tokenize('.')
 
   dependencies {
+    println "wtf $zookeeperVersion"
     compile project(':clients')
     compile "org.scala-lang:scala-library:$scalaVersion"
-    compile 'org.apache.zookeeper:zookeeper:3.4.6'
+    compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
     compile 'com.101tec:zkclient:0.5'
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile 'net.sf.jopt-simple:jopt-simple:3.2'
@@ -294,11 +295,16 @@ project(':contrib:hadoop-consumer') {
   dependencies {
     compile project(':core')
     compile "org.apache.avro:avro:1.4.0"
-    compile "org.apache.pig:pig:0.8.0"
+    compile "org.apache.pig:pig:$pigVersion:h2@jar"
+    compile ("org.apache.pig:piggybank:$pigVersion")
+     { exclude group: 'org.apache.avro', module: 'avro'
+       exclude group: 'org.apache.pig', module: 'pig'}
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
     compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
-    compile "org.apache.hadoop:hadoop-core:0.20.2"
+    compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
+      { exclude group: 'org.apache.avro', module: 'avro'}
+    compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
   }
 
   configurations {
@@ -318,11 +324,16 @@ project(':contrib:hadoop-producer') {
   dependencies {
     compile project(':core')
     compile("org.apache.avro:avro:1.4.0") { force = true }
-    compile "org.apache.pig:pig:0.8.0"
+    compile "org.apache.pig:pig:$pigVersion:h2@jar"
+    compile ("org.apache.pig:piggybank:$pigVersion")
+     { exclude group: 'org.apache.avro', module: 'avro'
+       exclude group: 'org.apache.pig', module: 'pig'}
     compile "commons-logging:commons-logging:1.0.4"
     compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
     compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
-    compile "org.apache.hadoop:hadoop-core:0.20.2"
+    compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
+      { exclude group: 'org.apache.avro', module: 'avro'}
+    compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
     compile "org.apache.pig:piggybank:0.12.0"
   }
 
