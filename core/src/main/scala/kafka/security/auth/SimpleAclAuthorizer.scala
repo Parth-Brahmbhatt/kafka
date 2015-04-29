@@ -1,3 +1,19 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package kafka.security.auth
 
 import java.util.concurrent.TimeUnit
@@ -9,15 +25,13 @@ import kafka.utils.CoreUtils.{inReadLock, inWriteLock}
 import kafka.utils._
 import org.I0Itec.zkclient.{IZkDataListener, ZkClient}
 
-import scala.collection.mutable
-
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
   var superUsers: Set[KafkaPrincipal] = null
   val scheduler: KafkaScheduler = new KafkaScheduler(threads = 1 , threadNamePrefix = "authorizer")
   private val aclZkPath: String = "/kafka-acl/"
   private val aclChangedZkPath: String = "/kafka-acl-changed"
-  private val aclCache: mutable.HashMap[String, Set[Acl]] = new mutable.HashMap[String, Set[Acl]]
+  private val aclCache: scala.collection.mutable.HashMap[Resource, Set[Acl]] = new scala.collection.mutable.HashMap[Resource, Set[Acl]]
   private val lock = new ReentrantReadWriteLock()
   private var zkClient: ZkClient = null
 
@@ -37,7 +51,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     scheduler.schedule("sync-acls", syncAcls, delay = 0l, period = 1l, unit = TimeUnit.HOURS)
   }
 
-  override def authorize(session: Session, operation: Operation, resource: String): Boolean = {
+  override def authorize(session: Session, operation: Operation, resource: Resource): Boolean = {
     if (session == null || session.principal == null || session.host == null) {
       debug("session, session.principal and session.host can not be null, programming error so failing open.")
       return true
@@ -53,7 +67,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
       return true
     }
 
-    if (resource == null || resource == null || resource.isEmpty) {
+    if (resource == null || resource.resourceType == null || resource.name == null || resource.name.isEmpty) {
       debug("resource is null or empty for operation = %s , session = %s. programming error so failing open.".format(operation, session))
       return true
     }
@@ -102,12 +116,12 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
   def syncAcls(): Unit = {
     debug("Syncing the acl cache for all ")
-    var resources: collection.Set[String] = Set.empty
+    var resources: collection.Set[Resource] = Set.empty
     inReadLock(lock) {
       resources = aclCache.keySet
     }
 
-    for (resource: String <- resources) {
+    for (resource: Resource <- resources) {
       val resourceAcls: Set[Acl] = getAcls(resource)
       inWriteLock(lock) {
         aclCache.put(resource, resourceAcls)
@@ -115,7 +129,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     }
   }
 
-  override def addAcls(acls: Set[Acl], resource: String): Unit = {
+  override def addAcls(acls: Set[Acl], resource: Resource): Unit = {
     if(acls == null || acls.isEmpty) {
       return
     }
@@ -136,7 +150,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     updateAclChangedFlag(resource)
   }
 
-  override def removeAcls(acls: Set[Acl], resource: String): Boolean = {
+  override def removeAcls(acls: Set[Acl], resource: Resource): Boolean = {
     val existingAcls: Set[Acl] = getAcls(resource)
     val filteredAcls: Set[Acl] = existingAcls.filter((acl: Acl) => !acls.contains(acl))
     if(existingAcls.equals(filteredAcls)) {
@@ -159,7 +173,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     true
   }
 
-  override def removeAcls(resource: String): Boolean = {
+  override def removeAcls(resource: Resource): Boolean = {
     if(ZkUtils.pathExists(zkClient, toResourcePath(resource))) {
       ZkUtils.deletePath(zkClient, toResourcePath(resource))
       inWriteLock(lock) {
@@ -171,7 +185,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     false
   }
 
-  override def getAcls(resource: String): Set[Acl] = {
+  override def getAcls(resource: Resource): Set[Acl] = {
     inReadLock(lock) {
       if(aclCache.contains(resource)) {
         return aclCache.get(resource).get
@@ -188,30 +202,30 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   }
 
   override def getAcls(principal: KafkaPrincipal): Set[Acl] = {
-    val resources: collection.Set[String] = aclCache.keySet
-    val acls: mutable.Set[Acl] = new mutable.HashSet[Acl]
-    for(resource: String <- resources) {
+    val resources: collection.Set[Resource] = aclCache.keySet
+    val acls: scala.collection.mutable.HashSet[Acl] = new scala.collection.mutable.HashSet[Acl]
+    for(resource: Resource <- resources) {
       val resourceAcls: Set[Acl] = getAcls(resource)
       acls ++= resourceAcls.filter((acl: Acl) => acl.principals.contains(principal))
     }
     acls.toSet
   }
 
-  def toResourcePath(resource: String) : String = {
-    aclZkPath + resource
+  def toResourcePath(resource: Resource) : String = {
+    aclZkPath + resource.resourceType + "/" + resource.name
   }
 
-  def updateAclChangedFlag(resource: String): Unit = {
+  def updateAclChangedFlag(resource: Resource): Unit = {
     if(ZkUtils.pathExists(zkClient, aclChangedZkPath)) {
-      ZkUtils.updatePersistentPath(zkClient, aclChangedZkPath, resource)
+      ZkUtils.updatePersistentPath(zkClient, aclChangedZkPath, resource.toString)
     } else {
-      ZkUtils.createPersistentPath(zkClient, aclChangedZkPath, resource)
+      ZkUtils.createPersistentPath(zkClient, aclChangedZkPath, resource.toString)
     }
   }
 
   object ZkListener extends IZkDataListener {
     override def handleDataChange(dataPath: String, data: Object): Unit = {
-      val resource = data.toString
+      val resource: Resource = Resource.fromString(data.toString)
       //invalidate the cache entry
       inWriteLock(lock) {
         aclCache.remove(resource)
