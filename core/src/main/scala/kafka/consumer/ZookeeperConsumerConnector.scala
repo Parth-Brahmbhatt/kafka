@@ -28,6 +28,7 @@ import kafka.api._
 import kafka.client.ClientUtils
 import kafka.cluster._
 import kafka.common._
+import kafka.common.security.LoginManager
 import kafka.javaapi.consumer.ConsumerRebalanceListener
 import kafka.metrics._
 import kafka.network.BlockingChannel
@@ -113,10 +114,10 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
   private val kafkaCommitMeter = newMeter("KafkaCommitsPerSec", "commits", TimeUnit.SECONDS, Map("clientId" -> config.clientId))
   private val zkCommitMeter = newMeter("ZooKeeperCommitsPerSec", "commits", TimeUnit.SECONDS, Map("clientId" -> config.clientId))
   private val rebalanceTimer = new KafkaTimer(newTimer("RebalanceRateAndTime", TimeUnit.MILLISECONDS, TimeUnit.SECONDS, Map("clientId" -> config.clientId)))
-  private var protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)
-  if(config.kerberosEnable) {
-    KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
-    protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, true)
+  private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
+
+  if (protocol == SecurityProtocol.SSLSASL || protocol == SecurityProtocol.PLAINTEXTSASL) {
+    LoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
   }
 
   val consumerIdString = {
@@ -194,7 +195,7 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
     if (config.offsetsStorage == "kafka") {
       if (offsetsChannel == null || !offsetsChannel.isConnected)
         offsetsChannel = ClientUtils.channelToOffsetManager(config.groupId, zkClient,
-          config.offsetsChannelSocketTimeoutMs, config.offsetsChannelBackoffMs, protocolAndAuth)
+          config.offsetsChannelSocketTimeoutMs, config.offsetsChannelBackoffMs, protocol)
 
       debug("Connected to offset manager %s:%d.".format(offsetsChannel.host, offsetsChannel.port))
     }
@@ -225,6 +226,7 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
           }
 
           if (offsetsChannel != null) offsetsChannel.disconnect()
+          LoginManager.shutdown
         } catch {
           case e: Throwable =>
             fatal("error during consumer connector shutdown", e)

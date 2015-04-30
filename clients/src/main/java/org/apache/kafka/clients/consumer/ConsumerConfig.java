@@ -12,6 +12,13 @@
  */
 package org.apache.kafka.clients.consumer;
 
+import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
+import static org.apache.kafka.common.config.ConfigDef.ValidString.in;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceCallback;
 import org.apache.kafka.common.config.AbstractConfig;
@@ -19,13 +26,6 @@ import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.serialization.Deserializer;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-
-import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
-import static org.apache.kafka.common.config.ConfigDef.ValidString.in;
 
 /**
  * The consumer configuration keys
@@ -156,6 +156,10 @@ public class ConsumerConfig extends AbstractConfig {
     public static final String VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer";
     private static final String VALUE_DESERIALIZER_CLASS_DOC = "Deserializer class for value that implements the <code>Deserializer</code> interface.";
 
+    /** <code>security.config.file </code> */
+    public static final String SECURITY_CONFIG_FILE_CONFIG = CommonClientConfigs.SECURITY_CONFIG_FILE_CONFIG;
+    private static final String SECURITY_CONFIG_FILE_DOC = CommonClientConfigs.SECURITY_CONFIG_FILE_DOC;
+
 
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG,
@@ -277,7 +281,12 @@ public class ConsumerConfig extends AbstractConfig {
                                 .define(VALUE_DESERIALIZER_CLASS_CONFIG,
                                         Type.CLASS,
                                         Importance.HIGH,
-                                        VALUE_DESERIALIZER_CLASS_DOC);
+                                        VALUE_DESERIALIZER_CLASS_DOC)
+                                .define(SECURITY_CONFIG_FILE_CONFIG,
+                                        Type.STRING,
+                                        "",
+                                        Importance.MEDIUM,
+                                        SECURITY_CONFIG_FILE_DOC);
     }
 
     public static Map<String, Object> addDeserializerToConfig(Map<String, Object> configs,
@@ -304,7 +313,7 @@ public class ConsumerConfig extends AbstractConfig {
         return newProperties;
     }
 
-    ConsumerConfig(Map<?, ?> props) {
+    ConsumerConfig(Map<? extends Object, ? extends Object> props) {
         super(CONFIG, props);
     }
 

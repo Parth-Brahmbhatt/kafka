@@ -79,12 +79,11 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
     val messageQueue = new LinkedBlockingQueue[(RequestOrResponse, (RequestOrResponse) => Unit)]()
     debug("Controller %d trying to connect to broker %d".format(config.brokerId,broker.id))
     val brokerEndPoint = broker.getBrokerEndPoint(config.interBrokerSecurityProtocol)
-    val brokerProtocolAndAuth = ProtocolAndAuth(config.interBrokerSecurityProtocol, config.brokerAuthenticationEnable)
     val channel = new BlockingChannel(brokerEndPoint.host, brokerEndPoint.port,
       BlockingChannel.UseDefaultBufferSize,
       BlockingChannel.UseDefaultBufferSize,
       config.controllerSocketTimeoutMs,
-      brokerProtocolAndAuth)
+      config.interBrokerSecurityProtocol)
     val requestThread = new RequestSendThread(config.brokerId, controllerContext, broker, messageQueue, channel)
     requestThread.setDaemon(false)
     brokerStateInfo.put(broker.id, new ControllerBrokerStateInfo(channel, broker, messageQueue, requestThread))

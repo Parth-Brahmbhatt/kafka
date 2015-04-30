@@ -20,6 +20,8 @@ package kafka.producer
 import java.util.Properties
 import kafka.utils.VerifiableProperties
 
+import org.apache.kafka.common.protocol.SecurityProtocol
+
 class SyncProducerConfig private (val props: VerifiableProperties) extends SyncProducerConfigShared {
   def this(originalProps: Properties) {
     this(new VerifiableProperties(originalProps))
@@ -58,11 +60,12 @@ trait SyncProducerConfigShared {
   val requestTimeoutMs = props.getIntInRange("request.timeout.ms", SyncProducerConfig.DefaultAckTimeoutMs,
     (1, Integer.MAX_VALUE))
 
-  val kerberosEnable = props.getBoolean("kerberos.enable", false)
+  val securityProtocol = props.getString("security.protocol", SyncProducerConfig.DefaultSecurityProtocol)
 }
 
 object SyncProducerConfig {
   val DefaultClientId = ""
   val DefaultRequiredAcks : Short = 0
   val DefaultAckTimeoutMs = 10000
+  val DefaultSecurityProtocol = SecurityProtocol.PLAINTEXT.toString
 }

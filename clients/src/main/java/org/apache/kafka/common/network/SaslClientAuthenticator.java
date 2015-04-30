@@ -96,9 +96,6 @@ public class SaslClientAuthenticator implements Authenticator {
                                                           krb5Mechanism,
                                                           GSSCredential.INITIATE_ONLY);*/
             //subject.getPrivateCredentials().add(cred);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Added private credential to subject: ");
-            }
         } catch (GSSException ex) {
             LOG.warn("Cannot add private credential to subject; " +
                      "authentication at the server may fail", ex);
@@ -108,11 +105,9 @@ public class SaslClientAuthenticator implements Authenticator {
         final Principal clientPrincipal = (Principal)principals[0];
         final KerberosName clientKerberosName = new KerberosName(clientPrincipal.getName());
         // assume that server and client are in the same realm (by default; unless the system property
-        // "zookeeper.server.realm" is set).
+        // "kafka.server.realm" is set).
         String serverRealm = System.getProperty("kafka.server.realm",clientKerberosName.getRealm());
         KerberosName serviceKerberosName = new KerberosName(servicePrincipal+"@"+serverRealm);
-        // final String serviceName = serviceKerberosName.getServiceName();
-        // final String serviceHostname = serviceKerberosName.getHostName();
         final String clientPrincipalName = clientKerberosName.toString();
         try {
             saslClient = Subject.doAs(subject,new PrivilegedExceptionAction<SaslClient>() {
@@ -136,10 +131,9 @@ public class SaslClientAuthenticator implements Authenticator {
         byte[] serverToken = new byte[0];
 
         if(read && saslState == SaslState.INTERMEDIATE) {
-            serverToken = readToken();
+            serverToken = readSASLToken();
             if (serverToken.length == 0) //server yet to return a token.
                 return SelectionKey.OP_READ;
-
         } else if(saslState == SaslState.INITIAL) {
             saslState = SaslState.INTERMEDIATE;
         }
@@ -148,9 +142,7 @@ public class SaslClientAuthenticator implements Authenticator {
             try {
                 saslToken = createSaslToken(serverToken);
                 if (saslToken != null) {
-                    LOG.info("hello client sasl token without header "+saslToken.length);
                     byte[] withHeaderWrapped = addSASLHeader(saslToken);
-                    LOG.info("hello client sasl token without header "+withHeaderWrapped.length);
                     netOutBuffer = Utils.ensureCapacity(netOutBuffer, withHeaderWrapped.length);
                     netOutBuffer.clear();
                     netOutBuffer.put(withHeaderWrapped);
@@ -224,7 +216,7 @@ public class SaslClientAuthenticator implements Authenticator {
      *         decipher a handshake token are present
      * @throws IOException Packet is malformed
      */
-    private byte[] readToken()
+    private byte[] readSASLToken()
         throws IOException {
         byte[] tokenBytes = null;
         try {
@@ -232,9 +224,9 @@ public class SaslClientAuthenticator implements Authenticator {
             int readLen = transportLayer.read(saslTokenHeader);
             if(readLen == 0)
                 return new byte[0];
-            int len = Utils.toInt(saslTokenHeader.array(), 0);
+            int len = Utils.readUnsignedIntLE(saslTokenHeader.array(), 0);
             if (len < 0) {
-                throw new IOException("Token length " + len + " < 0");
+                throw new IOException("SASL Token length " + len + " < 0");
             }
             netInBuffer.clear();
             netInBuffer = Utils.ensureCapacity(netInBuffer, len);
@@ -255,7 +247,7 @@ public class SaslClientAuthenticator implements Authenticator {
      */
     private static byte [] addSASLHeader(final byte [] content) {
         byte [] header = new byte[4];
-        Utils.writeInt(content.length, header, 0);
+        Utils.writeUnsignedIntLE(header, 0, content.length);
         byte [] result = new byte[header.length + content.length];
         System.arraycopy(header, 0, result, 0, header.length);
         System.arraycopy(content, 0, result, header.length, content.length);

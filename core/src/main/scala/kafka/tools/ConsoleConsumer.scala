@@ -132,7 +132,8 @@ object ConsoleConsumer extends Logging {
     }
     consumerProps.put("auto.offset.reset", if(options.has(resetBeginningOpt)) "smallest" else "largest")
     consumerProps.put("zookeeper.connect", options.valueOf(zkConnectOpt))
-    consumerProps.put("kerberos.enable", kerberosEnable.toString)
+    if(kerberosEnable)
+      consumerProps.put("security.protocol", "PLAINTEXTSASL")
 
     if (!checkZkPathExists(options.valueOf(zkConnectOpt),"/brokers/ids")) {
       System.err.println("No brokers found.")

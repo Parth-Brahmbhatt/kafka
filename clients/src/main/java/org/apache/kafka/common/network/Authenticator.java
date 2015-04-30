@@ -22,7 +22,6 @@ package org.apache.kafka.common.network;
  */
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import com.sun.security.auth.UserPrincipal;
 
 
@@ -33,29 +32,29 @@ public interface Authenticator {
      *
      * @throws IOException if any I/O error occurs
      */
-    public void close() throws IOException;
+    void close() throws IOException;
 
     /**
      *
      * @throws IOException
      */
-    public void init() throws IOException;
+    void init() throws IOException;
 
     /**
      * Returns UserPrincipal after authentication is established
      */
-    public UserPrincipal userPrincipal();
+    UserPrincipal userPrincipal();
 
 
     /**
      * Does authentication and returns SelectionKey.OP if further communication needed
      */
-    public int authenticate (boolean read, boolean write) throws IOException;
+    int authenticate(boolean read, boolean write) throws IOException;
 
     /**
      * returns true if authentication is complete otherwise returns false;
      */
 
-    public boolean isComplete();
+    boolean isComplete();
 
 }

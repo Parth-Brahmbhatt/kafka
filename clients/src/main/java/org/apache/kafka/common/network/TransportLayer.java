@@ -37,28 +37,34 @@ public interface TransportLayer {
      *
      * @throws IOException If and I/O error occurs
      */
-    public void close() throws IOException;
+    void close() throws IOException;
 
 
     /**
-     * Tells wheter or not this channel is open.
+     * Tells wheather or not this channel is open.
      */
-    public boolean isOpen();
+    boolean isOpen();
 
     /**
      * Writes a sequence of bytes to this channel from the given buffer.
      */
-    public int write(ByteBuffer src) throws IOException;
+    int write(ByteBuffer src) throws IOException;
 
-    public long write(ByteBuffer[] srcs) throws IOException;
+    long write(ByteBuffer[] srcs) throws IOException;
 
-    public long write(ByteBuffer[] srcs, int offset, int length) throws IOException;
+    long write(ByteBuffer[] srcs, int offset, int length) throws IOException;
 
-    public int read(ByteBuffer dst) throws IOException;
+    int read(ByteBuffer dst) throws IOException;
 
-    public boolean isReady();
+    long read(ByteBuffer[] dsts) throws IOException;
 
-    public SocketChannel socketChannel();
+    long read(ByteBuffer[] dsts, int offset, int length) throws IOException;
+
+    boolean isReady();
+
+    boolean finishConnect() throws IOException;
+
+    SocketChannel socketChannel();
 
     /**
      * Performs SSL handshake hence is a no-op for the non-secure
@@ -68,13 +74,13 @@ public interface TransportLayer {
      * @return Always return 0
      * @throws IOException
     */
-    public int handshake(boolean read, boolean write) throws IOException;
+    int handshake(boolean read, boolean write) throws IOException;
 
-    public DataInputStream inStream() throws IOException;
+    DataInputStream inStream() throws IOException;
 
-    public DataOutputStream outStream() throws IOException;
+    DataOutputStream outStream() throws IOException;
 
-    public boolean flush(ByteBuffer buffer) throws IOException;
+    boolean flush(ByteBuffer buffer) throws IOException;
 
-    public Principal getPeerPrincipal();
+    Principal getPeerPrincipal();
 }

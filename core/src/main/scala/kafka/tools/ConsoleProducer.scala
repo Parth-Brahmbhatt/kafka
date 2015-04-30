@@ -77,7 +77,6 @@ object ConsoleProducer {
     val props = new Properties
 
     props.putAll(config.extraProducerProps)
-
     props.put("metadata.broker.list", config.brokerList)
     props.put("compression.codec", config.compressionCodec)
     props.put("producer.type", if(config.sync) "sync" else "async")
@@ -93,7 +92,8 @@ object ConsoleProducer {
     props.put("serializer.class", config.valueEncoderClass)
     props.put("send.buffer.bytes", config.socketBuffer.toString)
     props.put("topic.metadata.refresh.interval.ms", config.metadataExpiryMs.toString)
-    props.put("kerberos.enable", config.kerberosEnable.toString)
+    if(config.kerberosEnable)
+      props.put("security.protocol", "PLAINTEXTSASL")
     props.put("client.id", "console-producer")
 
     props

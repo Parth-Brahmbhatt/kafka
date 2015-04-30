@@ -125,9 +125,6 @@ public class SaslServerAuthenticator implements Authenticator {
                                                                           krb5Mechanism,
                                                                           GSSCredential.ACCEPT_ONLY);
                         		subject.getPrivateCredentials().add(cred);
-                        		if (LOG.isDebugEnabled()) {
-                                LOG.debug("Added private credential to subject: " + cred);
-                        		}
                         } catch (GSSException ex) {
                         		LOG.warn("Cannot add private credential to subject; " +
                                      "clients authentication may fail", ex);
@@ -210,7 +207,7 @@ public class SaslServerAuthenticator implements Authenticator {
             int readLen = transportLayer.read(saslTokenHeader);
             if(readLen == 0)
                 return new byte[0];
-            int len = Utils.toInt(saslTokenHeader.array(), 0);
+            int len = Utils.readUnsignedIntLE(saslTokenHeader.array(), 0);
             if (len < 0) {
                 throw new IOException("Token length " + len + " < 0");
             }
@@ -233,7 +230,7 @@ public class SaslServerAuthenticator implements Authenticator {
      */
     private static byte [] addSASLHeader(final byte [] content) {
         byte [] header = new byte[4];
-        Utils.writeInt(content.length, header, 0);
+        Utils.writeUnsignedIntLE(header, 0, content.length);
         byte [] result = new byte[header.length + content.length];
         System.arraycopy(header, 0, result, 0, header.length);
         System.arraycopy(content, 0, result, header.length, content.length);

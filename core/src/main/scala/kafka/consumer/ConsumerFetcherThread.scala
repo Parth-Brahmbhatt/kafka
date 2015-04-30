@@ -29,7 +29,7 @@ class ConsumerFetcherThread(name: String,
                             val config: ConsumerConfig,
                             sourceBroker: BrokerEndPoint,
                             partitionMap: Map[TopicAndPartition, PartitionTopicInfo],
-                            protocolAndAuth: ProtocolAndAuth,
+                            protocol: SecurityProtocol,
                             val consumerFetcherManager: ConsumerFetcherManager)
         extends AbstractFetcherThread(name = name,
                                       clientId = config.clientId,
@@ -42,7 +42,7 @@ class ConsumerFetcherThread(name: String,
                                       minBytes = config.fetchMinBytes,
                                       fetchBackOffMs = config.refreshLeaderBackoffMs,
                                       isInterruptible = true,
-                                      protocolAndAuth) {
+                                      protocol) {
 
   // process fetched data
   def processPartitionData(topicAndPartition: TopicAndPartition, fetchOffset: Long, partitionData: FetchResponsePartitionData) {

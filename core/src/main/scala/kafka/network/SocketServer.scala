@@ -32,7 +32,8 @@ import org.apache.kafka.common.network.{TransportLayer, PlainTextTransportLayer,
   SaslServerAuthenticator, Authenticator, DefaultAuthenticator, Channel}
 import scala.collection._
 
-import kafka.common.{KafkaException, KerberosLoginManager}
+import kafka.common.KafkaException
+import kafka.common.security.LoginManager
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils._
 import com.yammer.metrics.core.{Gauge, Meter}
@@ -53,8 +54,7 @@ class SocketServer(val brokerId: Int,
                    val maxRequestSize: Int = Int.MaxValue,
                    val maxConnectionsPerIp: Int = Int.MaxValue,
                    val connectionsMaxIdleMs: Long,
-                   val maxConnectionsPerIpOverrides: Map[String, Int],
-                   val brokerAuthenticationEnable: Boolean = false) extends Logging with KafkaMetricsGroup {
+                   val maxConnectionsPerIpOverrides: Map[String, Int]) extends Logging with KafkaMetricsGroup {
   this.logIdent = "[Socket Server on Broker " + brokerId + "], "
   private val time = SystemTime
   private val processors = new Array[Processor](numProcessorThreads)
@@ -108,7 +108,7 @@ class SocketServer(val brokerId: Int,
 
     this.synchronized {
       endpoints.values.foreach(endpoint => {
-        val acceptor = new Acceptor(endpoint.host, endpoint.port, processors, sendBufferSize, recvBufferSize, quotas, endpoint.protocolType, portToProtocol, brokerAuthenticationEnable)
+        val acceptor = new Acceptor(endpoint.host, endpoint.port, processors, sendBufferSize, recvBufferSize, quotas, endpoint.protocolType, portToProtocol)
         acceptors.put(endpoint, acceptor)
         Utils.newThread("kafka-socket-acceptor-%s-%d".format(endpoint.protocolType.toString, endpoint.port), acceptor, false).start()
         acceptor.awaitStartup
@@ -240,8 +240,7 @@ private[kafka] class Acceptor(val host: String,
                               val recvBufferSize: Int,
                               connectionQuotas: ConnectionQuotas,
                               protocol: SecurityProtocol,
-                              portToProtocol: ConcurrentHashMap[Int, SecurityProtocol],
-                              brokerAuthenticationEnable: Boolean) extends AbstractServerThread(connectionQuotas) {
+                              portToProtocol: ConcurrentHashMap[Int, SecurityProtocol]) extends AbstractServerThread(connectionQuotas) {
   val serverChannel = openServerSocket(host, port)
   portToProtocol.put(serverChannel.socket().getLocalPort, protocol)
 
@@ -323,8 +322,8 @@ private[kafka] class Acceptor(val host: String,
       val transportLayer: TransportLayer = new PlainTextTransportLayer(socketChannel)
       var authenticator: Authenticator = null
 
-      if (brokerAuthenticationEnable)
-        authenticator = new SaslServerAuthenticator(KerberosLoginManager.subject, transportLayer)
+      if (protocol == SecurityProtocol.PLAINTEXTSASL || protocol == SecurityProtocol.SSLSASL)
+        authenticator = new SaslServerAuthenticator(LoginManager.subject, transportLayer)
       else
         authenticator = new DefaultAuthenticator(transportLayer)
 
@@ -391,20 +390,16 @@ private[kafka] class Processor(val id: Int,
             channel = socketContainer.get(channelFor(key))
             iter.remove()
             if(key.isReadable) {
-              if(channel.isReady()) {
+              if(channel.isReady())
                 read(key)
-              } else {
-                val status = channel.connect(key.isReadable(), key.isWritable())
-                if (status == 0) key.interestOps(SelectionKey.OP_READ) else key.interestOps(status)
-              }
+              else
+                handshake(key, channel)
             } else if(key.isWritable) {
-              if(channel.isReady()) {
+              if(channel.isReady())
                 write(key)
-              } else {
-                val status = channel.connect(key.isReadable(), key.isWritable())
-                if (status == 0) key.interestOps(SelectionKey.OP_READ) else key.interestOps(status)
-              }
-          } else if(!key.isValid)
+              else
+                handshake(key, channel)
+            } else if(!key.isValid)
               close(key)
             else
               throw new IllegalStateException("Unrecognized key state for processor thread.")
@@ -504,6 +499,14 @@ private[kafka] class Processor(val id: Int,
     }
   }
 
+  /**
+    * New channel  handshake and authentication.
+    */
+  private def handshake(key: SelectionKey, channel: Channel) {
+    val status = channel.connect(key.isReadable(), key.isWritable())
+    if (status == 0) key.interestOps(SelectionKey.OP_READ) else key.interestOps(status)
+  }
+
   /*
    * Process reads from ready sockets
    */
@@ -549,12 +552,13 @@ private[kafka] class Processor(val id: Int,
    */
   def write(key: SelectionKey) {
     val socketChannel = channelFor(key)
+    val channel: Channel = socketContainer.get(socketChannel)
     val cnxn = key.attachment().asInstanceOf[KafkaCnxn]
     val response = cnxn.response
     val responseSend = response.responseSend
     if(responseSend == null)
       throw new IllegalStateException("Registered for write interest but no response attached to key.")
-    val written = responseSend.writeTo(socketChannel)
+    val written = responseSend.writeTo(channel)
     trace(written + " bytes written to " + socketChannel.socket.getRemoteSocketAddress() + " using key " + key)
     if(responseSend.complete) {
       response.request.updateRequestMetrics()

@@ -29,7 +29,7 @@ class ReplicaFetcherManager(private val brokerConfig: KafkaConfig, private val r
 
   override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): AbstractFetcherThread = {
     new ReplicaFetcherThread("ReplicaFetcherThread-%d-%d".format(fetcherId, sourceBroker.id), sourceBroker, brokerConfig, replicaMgr,
-                             ProtocolAndAuth(brokerConfig.interBrokerSecurityProtocol, brokerConfig.brokerAuthenticationEnable))
+                             brokerConfig.interBrokerSecurityProtocol)
   }
 
   def shutdown() {

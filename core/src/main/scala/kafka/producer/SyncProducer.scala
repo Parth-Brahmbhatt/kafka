@@ -38,10 +38,9 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
 
   private val lock = new Object()
   @volatile private var shutdown: Boolean = false
-  private var protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)
-  if(config.kerberosEnable) protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, true)
+  private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
   private val blockingChannel = new BlockingChannel(config.host, config.port, BlockingChannel.UseDefaultBufferSize,
-    config.sendBufferBytes, config.requestTimeoutMs, protocolAndAuth)
+    config.sendBufferBytes, config.requestTimeoutMs, protocol)
   val producerRequestStats = ProducerRequestStatsRegistry.getProducerRequestStats(config.clientId)
 
   trace("Instantiating Scala Sync Producer with properties: %s".format(config.props))

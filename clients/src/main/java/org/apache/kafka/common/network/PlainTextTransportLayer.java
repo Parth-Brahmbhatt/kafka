@@ -24,7 +24,6 @@ package org.apache.kafka.common.network;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.nio.channels.ClosedChannelException;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -43,6 +42,7 @@ public class PlainTextTransportLayer implements TransportLayer {
 
     public PlainTextTransportLayer(SocketChannel socketChannel) throws IOException {
         this.socketChannel = socketChannel;
+
     }
 
 
@@ -64,7 +64,7 @@ public class PlainTextTransportLayer implements TransportLayer {
     */
     public boolean flush(ByteBuffer buf) throws IOException {
         int remaining = buf.remaining();
-        if ( remaining > 0 ) {
+        if (remaining > 0) {
             int written = socketChannel.write(buf);
             return written >= remaining;
         }
@@ -97,6 +97,14 @@ public class PlainTextTransportLayer implements TransportLayer {
         return socketChannel.read(dst);
     }
 
+    public long read(ByteBuffer[] dsts) throws IOException {
+        return socketChannel.read(dsts);
+    }
+
+    public long read(ByteBuffer[] dsts, int offset, int length) throws IOException {
+        return socketChannel.read(dsts, offset, length);
+    }
+
     public boolean isReady() {
         return true;
     }
@@ -104,8 +112,13 @@ public class PlainTextTransportLayer implements TransportLayer {
     public SocketChannel socketChannel() {
         return socketChannel;
     }
+
+    public boolean finishConnect() throws IOException {
+        return socketChannel.finishConnect();
+    }
+
     /**
-     * Performs SSL or GSSAPI handshake hence is a no-op for the non-secure
+     * Performs SSL handshake hence is a no-op for the non-secure
      * implementation
      * @param read Unused in non-secure implementation
      * @param write Unused in non-secure implementation
@@ -116,11 +129,6 @@ public class PlainTextTransportLayer implements TransportLayer {
         return 0;
     }
 
-
-    public Principal getPeerPrincipal() {
-        return new UserPrincipal("ANONYMOUS");
-    }
-
     public DataInputStream inStream() throws IOException {
         if (inStream == null)
             this.inStream = new DataInputStream(socketChannel.socket().getInputStream());
@@ -129,8 +137,12 @@ public class PlainTextTransportLayer implements TransportLayer {
 
     public DataOutputStream outStream() throws IOException {
         if (outStream == null)
-            this.outStream = new DataOutputStream(socketChannel.socket().getOutputStream());
+         this.outStream = new DataOutputStream(socketChannel.socket().getOutputStream());
         return outStream;
+    }
+
+    public Principal getPeerPrincipal() {
+        return new UserPrincipal("ANONYMOUS");
     }
 
 }

@@ -15,7 +15,7 @@
   * limitations under the License.
   */
 
-package kafka.common
+package kafka.common.security
 
 import org.apache.kafka.common.security.kerberos.Login
 import org.apache.kafka.common.security.AuthUtils
@@ -23,33 +23,33 @@ import javax.security.auth.Subject
 import java.util.concurrent._
 import atomic.AtomicBoolean
 import kafka.utils.Logging
-import org.apache.kafka.common.network.SaslServerAuthenticator;
 
-object KerberosLoginManager extends Logging {
-  var kerberosLogin: Login = null
+object LoginManager extends Logging {
+  var login: Login = null
   var serviceName: String = null
   var loginContext: String = null
-  private var loginComplete = new AtomicBoolean(false)
+  var isStarted = new AtomicBoolean(false)
 
   def init(loginContext:String) {
-    if(!loginComplete.get()) {
-      kerberosLogin = new Login(loginContext)
-      kerberosLogin.startThreadIfNeeded()
+    if(isStarted.compareAndSet(false, true)) {
       this.loginContext = loginContext
+      login = new Login(loginContext)
+      login.startThreadIfNeeded()
       serviceName = AuthUtils.getJaasConfig(loginContext, AuthUtils.SERVICE_NAME)
-      loginComplete.set(true)
     }
   }
 
   def subject : Subject = {
-    if(kerberosLogin != null)
-      return kerberosLogin.getSubject
+    if(isStarted.get())
+      return login.getSubject
     null
   }
 
-  def shutdown() {
-    if (kerberosLogin != null)
-      kerberosLogin.shutdown()
+  def shutdown {
+    if (login != null) {
+      isStarted.set(false)
+      login.shutdown()
+    }
   }
 
 }

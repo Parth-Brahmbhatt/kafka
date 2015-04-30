@@ -23,11 +23,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 
 import java.nio.ByteBuffer;
-import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.ScatteringByteChannel;
 import java.nio.channels.GatheringByteChannel;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.nio.channels.ClosedChannelException;
 
 import com.sun.security.auth.UserPrincipal;
 
@@ -35,10 +33,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A channel abstraction for security channel implementation
+ *
  */
 
-public class Channel implements ReadableByteChannel, GatheringByteChannel {
+public class Channel implements ScatteringByteChannel, GatheringByteChannel {
     private static final Logger log = LoggerFactory.getLogger(Channel.class);
     private TransportLayer transportLayer;
     private Authenticator authenticator;
@@ -52,31 +50,30 @@ public class Channel implements ReadableByteChannel, GatheringByteChannel {
 
     public void close() throws IOException {
         transportLayer.close();
+        authenticator.close();
     }
 
     /**
      * returns user principal for the session
      * Incase of PLAINTEXT and No Authentication returns ANONYMOUS as the userPrincipal
+     * If SSL used without any SASL Authentication returns SSLSession.peerPrincipal
      */
     public UserPrincipal userPrincipal() {
         return authenticator.userPrincipal();
     }
 
     public int connect(boolean read, boolean write) throws IOException {
-        if(transportLayer.isReady() && authenticator.isComplete())
+        if (transportLayer.isReady() && authenticator.isComplete())
             return 0;
         int status = 0;
-        if(!transportLayer.isReady())
+        if (!transportLayer.isReady())
             status = transportLayer.handshake(read, write);
-        if(!authenticator.isComplete())
+        if (status == 0 && !authenticator.isComplete())
             status = authenticator.authenticate(read, write);
         return status;
     }
 
 
-    /**
-     * Tells wheter or not this channel is open.
-     */
     public boolean isOpen() {
         return transportLayer.isOpen();
     }
@@ -106,6 +103,20 @@ public class Channel implements ReadableByteChannel, GatheringByteChannel {
     @Override
     public int read(ByteBuffer dst) throws IOException {
         return transportLayer.read(dst);
+    }
+
+    @Override
+    public long read(ByteBuffer[] dsts) throws IOException {
+        return transportLayer.read(dsts);
+    }
+
+    @Override
+    public long read(ByteBuffer[] dsts, int offset, int length) throws IOException {
+        return transportLayer.read(dsts, offset, length);
+    }
+
+    public boolean finishConnect() throws IOException {
+        return transportLayer.finishConnect();
     }
 
     public boolean isReady() {

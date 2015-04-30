@@ -32,8 +32,8 @@ import org.I0Itec.zkclient.ZkClient
 import kafka.controller.{ControllerStats, KafkaController}
 import kafka.cluster.{EndPoint, Broker}
 import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
-import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException,
-                    KerberosLoginManager, ProtocolAndAuth}
+import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException, ProtocolAndAuth}
+import kafka.common.security.LoginManager
 import kafka.network.{Receive, BlockingChannel, SocketServer}
 import kafka.metrics.KafkaMetricsGroup
 import com.yammer.metrics.core.Gauge
@@ -118,9 +118,9 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         logManager.startup()
 
         /* start kerberosLoginManager */
-        if (config.brokerAuthenticationEnable) {
-          KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_SERVER)
-          protocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, true)
+        val listenerProtocols = config.listeners.keySet
+        if (listenerProtocols.contains(SecurityProtocol.SSLSASL) || listenerProtocols.contains(SecurityProtocol.PLAINTEXTSASL)) {
+          LoginManager.init(AuthUtils.LOGIN_CONTEXT_SERVER)
         }
 
         /* generate brokerId */
@@ -136,8 +136,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                                         config.socketRequestMaxBytes,
                                         config.maxConnectionsPerIp,
                                         config.connectionsMaxIdleMs,
-                                        config.maxConnectionsPerIpOverrides,
-                                        config.brokerAuthenticationEnable)
+                                        config.maxConnectionsPerIpOverrides)
           socketServer.startup()
 
           /* start replica manager */
@@ -274,7 +273,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                   BlockingChannel.UseDefaultBufferSize,
                   BlockingChannel.UseDefaultBufferSize,
                   config.controllerSocketTimeoutMs,
-                  protocolAndAuth)
+                  config.interBrokerSecurityProtocol)
                 channel.connect()
                 prevController = broker
               }

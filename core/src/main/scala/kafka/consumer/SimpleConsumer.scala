@@ -24,8 +24,10 @@ import kafka.api._
 import kafka.network._
 import kafka.utils._
 import kafka.common.{ErrorMapping, TopicAndPartition, ProtocolAndAuth}
+import kafka.common.security.LoginManager
 import org.apache.kafka.common.utils.Utils._
 import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.AuthUtils
 
 /**
  * A consumer of kafka messages
@@ -36,11 +38,15 @@ class SimpleConsumer(val host: String,
                      val soTimeout: Int,
                      val bufferSize: Int,
                      val clientId: String,
-                     val protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)) extends Logging {
+                     val protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
 
   ConsumerConfig.validateClientId(clientId)
+  if (protocol == SecurityProtocol.PLAINTEXTSASL || protocol == SecurityProtocol.SSLSASL) {
+    if (!LoginManager.isStarted.get())
+      LoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
+  }
   private val lock = new Object()
-  private val blockingChannel = new BlockingChannel(host, port, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout, protocolAndAuth)
+  private val blockingChannel = new BlockingChannel(host, port, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout, protocol)
   private val fetchRequestAndResponseStats = FetchRequestAndResponseStatsRegistry.getFetchRequestAndResponseStats(clientId)
   private var isClosed = false
 

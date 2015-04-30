@@ -21,7 +21,7 @@ import java.net.InetSocketAddress
 import java.nio.channels._
 import kafka.utils.{nonthreadsafe, Logging}
 import kafka.api.RequestOrResponse
-import kafka.common.{KerberosLoginManager, ProtocolAndAuth}
+import kafka.common.security.LoginManager
 import org.apache.kafka.common.security.kerberos.Login
 import org.apache.kafka.common.network.{Channel, TransportLayer, PlainTextTransportLayer,
   Authenticator, DefaultAuthenticator, SaslClientAuthenticator}
@@ -44,7 +44,7 @@ class BlockingChannel( val host: String,
                        val readBufferSize: Int,
                        val writeBufferSize: Int,
                        val readTimeoutMs: Int,
-                       val protocolAndAuth: ProtocolAndAuth = ProtocolAndAuth(SecurityProtocol.PLAINTEXT, false)) extends Logging {
+                       val protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
 
   private var connected = false
   private var channel: Channel = null
@@ -66,16 +66,10 @@ class BlockingChannel( val host: String,
         socketChannel.socket.setKeepAlive(true)
         socketChannel.socket.setTcpNoDelay(true)
         socketChannel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
-        val transportLayer: TransportLayer = new PlainTextTransportLayer(socketChannel)
-        var authenticator: Authenticator = null
-        if(protocolAndAuth.authentication)
-          authenticator = new SaslClientAuthenticator(KerberosLoginManager.subject, transportLayer, KerberosLoginManager.serviceName, host)
-        else
-          authenticator = new DefaultAuthenticator(transportLayer)
-        channel = new Channel(transportLayer, authenticator)
+        channel = createChannel(socketChannel)
+        while(!channel.isReady) channel.connect(true, true);
         writeChannel = channel
         readChannel = Channels.newChannel(channel.socketChannel().socket().getInputStream)
-        while(!channel.isReady) channel.connect(true, true);
         connected = true
         // settings may not match what we requested above
         val msg = "Created socket with SO_TIMEOUT = %d (requested %d), SO_RCVBUF = %d (requested %d), SO_SNDBUF = %d (requested %d), connectTimeoutMs = %d."
@@ -126,6 +120,23 @@ class BlockingChannel( val host: String,
     response.readCompletely(readChannel)
 
     response
+  }
+
+  private def createChannel(socketChannel: SocketChannel): Channel = {
+    var transportLayer: TransportLayer = null
+    var authenticator: Authenticator = null
+
+    if (protocol == SecurityProtocol.SSL || protocol == SecurityProtocol.SSLSASL)
+      transportLayer = new PlainTextTransportLayer(socketChannel)
+    else
+      transportLayer = new PlainTextTransportLayer(socketChannel)
+
+    if(protocol == SecurityProtocol.PLAINTEXTSASL || protocol == SecurityProtocol.SSLSASL)
+      authenticator = new SaslClientAuthenticator(LoginManager.subject, transportLayer, LoginManager.serviceName, host)
+    else
+      authenticator = new DefaultAuthenticator(transportLayer)
+
+    new Channel(transportLayer, authenticator)
   }
 
 }

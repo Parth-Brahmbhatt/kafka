@@ -19,11 +19,13 @@ package kafka.producer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 
-import kafka.common.{AppInfo, QueueFullException, KerberosLoginManager}
+import kafka.common.{AppInfo, QueueFullException}
+import kafka.common.security.LoginManager
 import kafka.metrics._
 import kafka.producer.async.{DefaultEventHandler, EventHandler, ProducerSendThread}
 import kafka.serializer.Encoder
 import kafka.utils._
+import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.security.AuthUtils
 
 class Producer[K,V](val config: ProducerConfig,
@@ -36,9 +38,11 @@ class Producer[K,V](val config: ProducerConfig,
   private var sync: Boolean = true
   private var producerSendThread: ProducerSendThread[K,V] = null
   private val lock = new Object()
+  private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
 
-  if(config.kerberosEnable)
-    KerberosLoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
+  if(protocol == SecurityProtocol.SSLSASL || protocol == SecurityProtocol.PLAINTEXTSASL) {
+    LoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
+  }
 
   config.producerType match {
     case "sync" =>
@@ -135,7 +139,7 @@ class Producer[K,V](val config: ProducerConfig,
         if (producerSendThread != null)
           producerSendThread.shutdown
         eventHandler.close
-        KerberosLoginManager.shutdown()
+        LoginManager.shutdown
         info("Producer shutdown completed in " + (System.nanoTime() - startTime) / 1000000 + " ms")
       }
     }

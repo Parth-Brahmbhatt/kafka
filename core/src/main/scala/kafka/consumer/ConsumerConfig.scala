@@ -21,6 +21,7 @@ import java.util.Properties
 import kafka.api.OffsetRequest
 import kafka.utils._
 import kafka.common.{InvalidConfigException, Config}
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 object ConsumerConfig extends Config {
   val RefreshMetadataBackoffMs = 200
@@ -52,7 +53,7 @@ object ConsumerConfig extends Config {
   val DefaultPartitionAssignmentStrategy = "range" /* select between "range", and "roundrobin" */
   val MirrorConsumerNumThreadsProp = "mirror.consumer.numthreads"
   val DefaultClientId = ""
-  val DefaultKerberosEnable = false
+  val DefaultSecurityProtocol = SecurityProtocol.PLAINTEXT.toString
 
   def validate(config: ConsumerConfig) {
     validateClientId(config.clientId)
@@ -183,7 +184,7 @@ class ConsumerConfig private (val props: VerifiableProperties) extends ZKConfig(
   /** Select a strategy for assigning partitions to consumer streams. Possible values: range, roundrobin */
   val partitionAssignmentStrategy = props.getString("partition.assignment.strategy", DefaultPartitionAssignmentStrategy)
 
-  val kerberosEnable = props.getBoolean("kerberos.enable", DefaultKerberosEnable)
+  val securityProtocol = props.getString("security.protocol", DefaultSecurityProtocol)
 
   validate(this)
 }
