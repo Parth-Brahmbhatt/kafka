@@ -26,10 +26,12 @@ def slf4jlog4j='org.slf4j:slf4j-log4j12:1.7.6'
 
 allprojects {
   apply plugin: 'idea'
-  maven {
+  repositories {
+    maven {
       url = "$repoUrl"
     }
-  mavenLocal()
+    mavenLocal()
+  }
 }
 
 ext {
