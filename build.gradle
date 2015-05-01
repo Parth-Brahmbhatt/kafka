@@ -309,6 +309,7 @@ project(':contrib:hadoop-consumer') {
     compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
       { exclude group: 'org.apache.avro', module: 'avro'}
     compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
+    compile files('lib/piggybank.jar')
   }
 
   configurations {
@@ -338,7 +339,7 @@ project(':contrib:hadoop-producer') {
     compile ("org.apache.hadoop:hadoop-client:$hadoopVersion")
       { exclude group: 'org.apache.avro', module: 'avro'}
     compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
-    compile "org.apache.pig:piggybank:0.12.0"
+    compile files('lib/piggybank.jar')
   }
 
   configurations {
