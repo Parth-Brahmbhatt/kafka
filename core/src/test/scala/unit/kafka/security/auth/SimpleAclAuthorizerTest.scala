@@ -163,10 +163,10 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     simpleAclAuthorizer.addAcls(Set[Acl](acl2), resource)
     assertEquals(Set(acl1,acl2), simpleAclAuthorizer.getAcls(resource))
 
-    //test remove a single acl from existing acls.
-    val acl3: Acl = new Acl(Set(user2), PermissionType.ALLOW, Set[String](Acl.wildCardHost), Set[Operation](Operation.READ))
-    simpleAclAuthorizer.removeAcls(Set(acl3), resource)
-    assertEquals(Set(acl1), simpleAclAuthorizer.getAcls(resource))
+//    //test remove a single acl from existing acls.
+//    val acl3: Acl = new Acl(Set(user2), PermissionType.ALLOW, Set[String](Acl.wildCardHost), Set[Operation](Operation.READ))
+//    simpleAclAuthorizer.removeAcls(Set(acl3), resource)
+//    assertEquals(Set(acl1), simpleAclAuthorizer.getAcls(resource))
 
     //test remove all acls for resource-- this fails transiently because even in process zookeeper seems to be eventually consistent.
     //simpleAclAuthorizer.removeAcls( resource)
