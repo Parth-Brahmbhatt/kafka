@@ -184,7 +184,7 @@ for ( sv in ['2_9_1', '2_9_2', '2_10_5', '2_11_6'] ) {
   }
 }
 
-tasks.create(name: "jarAll", dependsOn: ['jar_core_2_9_1', 'jar_core_2_9_2', 'jar_core_2_10_5', 'jar_core_2_11_6', 'clients:jar', 'examples:jar', 'contrib:hadoop-consumer:jar', 'contrib:hadoop-producer:jar']) {
+tasks.create(name: "jarAll", dependsOn: ['jar_core_2_9_1', 'jar_core_2_9_2', 'jar_core_2_10_5', 'jar_core_2_11_6', 'clients:jar', 'examples:jar', 'contrib:hadoop-consumer:jar', 'contrib:hadoop-producer:jar', 'contrib:kafka-ganglia:jar']) {
 }
 
 tasks.create(name: "srcJarAll", dependsOn: ['srcJar_2_9_1', 'srcJar_2_9_2', 'srcJar_2_10_5', 'srcJar_2_11_6', 'clients:srcJar', 'examples:srcJar', 'contrib:hadoop-consumer:srcJar', 'contrib:hadoop-producer:srcJar']) { }
@@ -323,6 +323,22 @@ project(':contrib:hadoop-consumer') {
   }
 }
 
+project(':contrib:kafka-ganglia') {
+  archivesBaseName = "kafka-ganglia"
+
+  dependencies {
+    compile project(':core')
+    compile "net.sf.jopt-simple:jopt-simple:3.2"
+    compile "com.yammer.metrics:metrics-core:2.2.0"
+    compile "com.yammer.metrics:metrics-ganglia:2.2.0"
+  }
+  task copyToLib( type: Copy ) {
+    into "$buildDir/libs/lib"
+    from configurations.runtime
+  }
+  jar { dependsOn copyToLib }
+}
+
 project(':contrib:hadoop-producer') {
   archivesBaseName = "kafka-hadoop-producer"
 
@@ -341,6 +357,7 @@ project(':contrib:hadoop-producer') {
     compile "org.apache.hadoop:hadoop-hdfs:$hadoopVersion"
     compile files('lib/piggybank.jar')
   }
+
 
   configurations {
     // manually excludes some unnecessary dependencies
