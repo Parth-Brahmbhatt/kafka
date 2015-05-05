@@ -207,7 +207,7 @@ public class SaslServerAuthenticator implements Authenticator {
             int readLen = transportLayer.read(saslTokenHeader);
             if(readLen == 0)
                 return new byte[0];
-            int len = Utils.readUnsignedIntLE(saslTokenHeader.array(), 0);
+            int len = Utils.toInt(saslTokenHeader.array(), 0);
             if (len < 0) {
                 throw new IOException("Token length " + len + " < 0");
             }
@@ -230,7 +230,7 @@ public class SaslServerAuthenticator implements Authenticator {
      */
     private static byte [] addSASLHeader(final byte [] content) {
         byte [] header = new byte[4];
-        Utils.writeUnsignedIntLE(header, 0, content.length);
+        Utils.writeInt(header, 0, content.length);
         byte [] result = new byte[header.length + content.length];
         System.arraycopy(header, 0, result, 0, header.length);
         System.arraycopy(content, 0, result, header.length, content.length);
