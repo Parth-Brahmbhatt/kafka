@@ -24,6 +24,7 @@ import kafka.server.KafkaConfig
 import kafka.utils.CoreUtils.{inReadLock, inWriteLock}
 import kafka.utils._
 import org.I0Itec.zkclient.{IZkDataListener, ZkClient}
+import org.apache.kafka.common.security.AuthUtils
 
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
