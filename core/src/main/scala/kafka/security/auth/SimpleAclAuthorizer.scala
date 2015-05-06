@@ -27,13 +27,14 @@ import org.I0Itec.zkclient.{IZkDataListener, ZkClient}
 
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
-  var superUsers: Set[KafkaPrincipal] = null
-  val scheduler: KafkaScheduler = new KafkaScheduler(threads = 1 , threadNamePrefix = "authorizer")
-  private val aclZkPath: String = "/kafka-acl/"
+  private var superUsers: Set[KafkaPrincipal] = null
+  private var zkClient: ZkClient = null
+  private var principalToLocalPlugin: Option[PrincipalToLocal] = null
+  private val scheduler: KafkaScheduler = new KafkaScheduler(threads = 1 , threadNamePrefix = "authorizer")
+  private val aclZkPath: String = "/kafka-acl"
   private val aclChangedZkPath: String = "/kafka-acl-changed"
   private val aclCache: scala.collection.mutable.HashMap[Resource, Set[Acl]] = new scala.collection.mutable.HashMap[Resource, Set[Acl]]
   private val lock = new ReentrantReadWriteLock()
-  private var zkClient: ZkClient = null
 
   /**
    * Guaranteed to be called before any authorize call is made.
@@ -43,6 +44,12 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
       case null => Set.empty[KafkaPrincipal]
       case (str: String) => if(str != null && !str.isEmpty) str.split(",").map(s => KafkaPrincipal.fromString(s.trim)).toSet else Set.empty
     }
+
+    principalToLocalPlugin = if(kafkaConfig.principalToLocal != null && kafkaConfig.principalToLocal.trim.length != 0)
+      Some(CoreUtils.createObject(kafkaConfig.principalToLocal.trim))
+    else
+      None
+
     zkClient = new ZkClient(kafkaConfig.zkConnect, kafkaConfig.zkConnectionTimeoutMs, kafkaConfig.zkConnectionTimeoutMs, ZKStringSerializer)
     zkClient.subscribeDataChanges(aclChangedZkPath, ZkListener)
 
@@ -64,6 +71,11 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
     val principal: KafkaPrincipal = new KafkaPrincipal(KafkaPrincipal.userType, session.principal.getName)
     val remoteAddress: String = session.host
+    val localUserName: Option[KafkaPrincipal] = if(principalToLocalPlugin.isDefined)
+      Some(new KafkaPrincipal(KafkaPrincipal.userType, principalToLocalPlugin.get.toLocal(session.principal)))
+    else
+      None
+
 
     trace("principal = %s , session = %s resource = %s operation = %s".format(principal, session, resource, operation))
 
@@ -84,7 +96,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     }
 
     /**
-     * if you are allowed to read or write we allow describe by default.
+     * if you are allowed to read or write we allow describe by default
      */
     val ops: Set[Operation] = if(Operation.DESCRIBE.equals(operation)) {
       Set[Operation] (operation, Operation.READ , Operation.WRITE)
@@ -92,30 +104,32 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
       Set[Operation](operation)
     }
 
-    //first check if there is any Deny acl that would disallow this operation.
-    for (acl: Acl <- acls) {
-      if (acl.permissionType.equals(PermissionType.DENY)
-        && (acl.principals.contains(principal) || acl.principals.contains(Acl.wildCardPrincipal))
-        && (acl.operations.contains(operation) || acl.operations.contains(Operation.ALL))
-        && (acl.hosts.contains(remoteAddress) || acl.hosts.contains(Acl.wildCardHost))) {
-        debug("denying operation = %s on resource = %s to session = %s based on acl = %s".format(operation, resource, session, acl))
-        return false
-      }
-    }
+    //first check if there is any Deny acl match that would disallow this operation.
+    if(aclMatch(session, Set(operation), resource, principal, remoteAddress, PermissionType.DENY, acls) ||
+      (localUserName.isDefined && aclMatch(session, Set(operation), resource, localUserName.get, remoteAddress, PermissionType.DENY, acls)))
+      return false
+
 
     //now check if there is any allow acl that will allow this operation.
-    for (acl: Acl <- acls) {
-      if (acl.permissionType.equals(PermissionType.ALLOW)
-        && (acl.principals.contains(principal) || acl.principals.contains(Acl.wildCardPrincipal))
-        && (acl.operations.intersect(ops).nonEmpty || acl.operations.contains(Operation.ALL))
-        && (acl.hosts.contains(remoteAddress) || acl.hosts.contains(Acl.wildCardHost))) {
-        debug("allowing operation = %s on resource = %s to session = %s based on acl = %s".format(operation, resource, session, acl))
-        return true
-      }
-    }
+    if(aclMatch(session, ops, resource, principal, remoteAddress, PermissionType.ALLOW, acls) ||
+      (localUserName.isDefined && aclMatch(session, ops, resource, localUserName.get, remoteAddress, PermissionType.ALLOW, acls)))
+      return true
 
     //We have some acls defined and they do not specify any allow ACL for the current session, reject request.
     debug("session = %s is not allowed to perform operation = %s  on resource = %s".format(session, operation, resource))
+    false
+  }
+
+  private def aclMatch(session: Session, operation: Set[Operation], resource: Resource, principal: KafkaPrincipal, remoteAddress: String, permissionType: PermissionType, acls: Set[Acl]): Boolean = {
+    for (acl: Acl <- acls) {
+      if (acl.permissionType.equals(permissionType)
+        && (acl.principals.contains(principal) || acl.principals.contains(Acl.wildCardPrincipal))
+        && (acl.operations.intersect(operation).nonEmpty  || acl.operations.contains(Operation.ALL))
+        && (acl.hosts.contains(remoteAddress) || acl.hosts.contains(Acl.wildCardHost))) {
+        debug("operation = %s on resource = %s to session = %s is %s based on acl = %s".format(operation, resource, session, permissionType.name(), acl))
+        return true
+      }
+    }
     false
   }
 
@@ -218,7 +232,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   }
 
   def toResourcePath(resource: Resource) : String = {
-    aclZkPath + resource.resourceType + "/" + resource.name
+    aclZkPath + "/" + resource.resourceType + "/" + resource.name
   }
 
   def updateAclChangedFlag(resource: Resource): Unit = {

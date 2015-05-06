@@ -16,9 +16,8 @@
  */
 package unit.kafka.security.auth
 
-import kafka.security.auth.{Acl, KafkaPrincipal, Operation, PermissionType}
-import kafka.utils.Json
-import org.junit.{Assert, Test}
+import kafka.security.auth.KafkaPrincipal
+import org.junit.Assert
 import org.scalatest.junit.JUnit3Suite
 
 class KafkaPrincipalTest extends JUnit3Suite   {

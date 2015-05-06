@@ -18,12 +18,11 @@ package unit.kafka.security.auth
 
 import kafka.security.auth.{Acl, KafkaPrincipal, Operation, PermissionType}
 import kafka.utils.Json
-import org.junit.{Assert, Test}
+import org.junit.Assert
 import org.scalatest.junit.JUnit3Suite
 
 class AclTest extends JUnit3Suite   {
 
-  @Test
   def testAclJsonConversion(): Unit = {
     val acl1: Acl = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.userType, "alice"), new KafkaPrincipal(KafkaPrincipal.userType, "bob")), PermissionType.DENY, Set[String]("host1","host2"), Set[Operation](Operation.READ, Operation.WRITE))
     val acl2: Acl = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.userType, "bob")), PermissionType.ALLOW, Set[String]("*"), Set[Operation](Operation.READ, Operation.WRITE))

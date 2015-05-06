@@ -45,6 +45,7 @@ object Defaults {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
   val SuperUser = ""
+  val PrincipalToLocal = ""
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -152,6 +153,7 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
   val SuperUserProp = "super.users"
+  val PrincipalToLocalProp = "principal.to.local.plugin.class"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -262,6 +264,7 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
   val SuperUserDoc = "Comma seperated list of users that will have super user access to the cluster and all the topics."
+  val PrincipalToLocalDoc = "Name of the class that converts a principal to local user."
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -405,6 +408,7 @@ object KafkaConfig {
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
       .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
+      .define(PrincipalToLocalProp, STRING, Defaults.PrincipalToLocal, LOW, PrincipalToLocalDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -530,6 +534,7 @@ object KafkaConfig {
       /************* Authorizer Configuration ***********/
       authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
       superUser =  parsed.get(SuperUserProp).asInstanceOf[String],
+      principalToLocal = parsed.get(PrincipalToLocalProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -675,6 +680,7 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   /************* Authorizer Configuration ***********/
                   val authorizerClassName: String = Defaults.AuthorizerClassName,
                   val superUser: String = Defaults.SuperUser,
+                  val principalToLocal: String = Defaults.PrincipalToLocal,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -902,6 +908,7 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     /************* Authorizer Configuration ***********/
     props.put(AuthorizerClassNameProp, authorizerClassName.toString)
     props.put(SuperUserProp, superUser.toString)
+    props.put(PrincipalToLocalProp, principalToLocal.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)
