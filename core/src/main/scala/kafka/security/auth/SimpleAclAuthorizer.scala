@@ -24,7 +24,6 @@ import kafka.server.KafkaConfig
 import kafka.utils.CoreUtils.{inReadLock, inWriteLock}
 import kafka.utils._
 import org.I0Itec.zkclient.{IZkDataListener, ZkClient}
-import org.apache.kafka.common.security.AuthUtils
 
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
@@ -42,10 +41,15 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   override def initialize(kafkaConfig: KafkaConfig): Unit = {
     superUsers = kafkaConfig.superUser match {
       case null => Set.empty[KafkaPrincipal]
-      case (str: String) => if(!str.isEmpty) str.split(",").map(s => KafkaPrincipal.fromString(s.trim)).toSet else Set.empty
+      case (str: String) => if(str != null && !str.isEmpty) str.split(",").map(s => KafkaPrincipal.fromString(s.trim)).toSet else Set.empty
     }
     zkClient = new ZkClient(kafkaConfig.zkConnect, kafkaConfig.zkConnectionTimeoutMs, kafkaConfig.zkConnectionTimeoutMs, ZKStringSerializer)
     zkClient.subscribeDataChanges(aclChangedZkPath, ZkListener)
+
+    if(!zkClient.exists(aclZkPath)) {
+      //TODO add zk acls to allow super users to modify /kafka-cluster..
+      zkClient.createPersistent(aclZkPath)
+    }
 
     //we still invalidate the cache every hour in case we missed any watch notifications due to re-connections.
     scheduler.startup()
@@ -138,6 +142,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     val updatedAcls: Set[Acl] = getAcls(resource) ++ acls
     val path: String = toResourcePath(resource)
 
+    //TODO: add acls to allow superusers to
     if(ZkUtils.pathExists(zkClient, path)) {
       ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(updatedAcls)))
     } else {
