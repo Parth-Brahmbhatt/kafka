@@ -22,7 +22,7 @@ package kafka.security.auth;
 public enum ResourceType {
    CLUSTER,
    TOPIC,
-   GROUP;
+   CONSUMER_GROUP;
 
    /**
     * method defined for case insensitive check. the default valueOf() method is case sensitive

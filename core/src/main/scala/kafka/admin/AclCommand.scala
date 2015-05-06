@@ -131,7 +131,7 @@ object AclCommand {
     else if(opts.options.has(opts.clusterOpt))
       return Resource.clusterResource
     else if(opts.options.has(opts.groupOpt))
-      return new Resource(ResourceType.GROUP, opts.options.valueOf(opts.groupOpt).toString)
+      return new Resource(ResourceType.CONSUMER_GROUP, opts.options.valueOf(opts.groupOpt).toString)
     else
       println("You must provide at least one of the resource argument from --topic <topic>, --cluster or --consumer-group <group>")
       System.exit(1)
