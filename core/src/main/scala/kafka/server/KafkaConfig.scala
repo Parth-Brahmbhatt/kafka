@@ -153,7 +153,7 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
   val SuperUserProp = "super.users"
-  val PrincipalToLocalProp = "principal.to.local.plugin.class"
+  val PrincipalToLocalProp = "principal.to.local.class"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"

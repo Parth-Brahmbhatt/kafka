@@ -55,7 +55,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
     if(!zkClient.exists(aclZkPath)) {
       //TODO add zk acls to allow super users to modify /kafka-cluster..
-      zkClient.createPersistent(aclZkPath)
+      ZkUtils.createPersistentPath(zkClient, aclZkPath)
     }
 
     //we still invalidate the cache every hour in case we missed any watch notifications due to re-connections.
@@ -79,7 +79,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
     trace("principal = %s , session = %s resource = %s operation = %s".format(principal, session, resource, operation))
 
-    if (superUsers.contains(principal)) {
+    if (superUsers.contains(principal) || (localUserName.isDefined && superUsers.contains(localUserName.get))) {
       debug("principal = %s is a super user, allowing operation without checking acls.".format(principal))
       return true
     }
