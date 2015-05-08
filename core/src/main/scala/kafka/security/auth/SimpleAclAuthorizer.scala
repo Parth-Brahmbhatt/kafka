@@ -24,12 +24,15 @@ import kafka.server.KafkaConfig
 import kafka.utils.CoreUtils.{inReadLock, inWriteLock}
 import kafka.utils._
 import org.I0Itec.zkclient.{IZkDataListener, ZkClient}
+import org.apache.zookeeper.ZooDefs
+import org.apache.zookeeper.data.{Id, ACL}
 
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
   private var superUsers: Set[KafkaPrincipal] = null
   private var zkClient: ZkClient = null
   private var principalToLocalPlugin: Option[PrincipalToLocal] = null
+  private var defaultAcls: List[ACL] = null
   private val scheduler: KafkaScheduler = new KafkaScheduler(threads = 1 , threadNamePrefix = "authorizer")
   private val aclZkPath: String = "/kafka-acl"
   private val aclChangedZkPath: String = "/kafka-acl-changed"
@@ -53,10 +56,17 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     zkClient = new ZkClient(kafkaConfig.zkConnect, kafkaConfig.zkConnectionTimeoutMs, kafkaConfig.zkConnectionTimeoutMs, ZKStringSerializer)
     zkClient.subscribeDataChanges(aclChangedZkPath, ZkListener)
 
-    if(!zkClient.exists(aclZkPath)) {
-      //TODO add zk acls to allow super users to modify /kafka-cluster..
-      ZkUtils.createPersistentPath(zkClient, aclZkPath)
+    import scala.collection.JavaConversions._
+    defaultAcls = if(ZkUtils.isSecure) {
+      (ZooDefs.Ids.CREATOR_ALL_ACL ++ superUsers.map(user => new ACL(ZooDefs.Perms.ALL, new Id("sasl", user.name)))).toList
+    } else {
+      ZooDefs.Ids.OPEN_ACL_UNSAFE.toList
     }
+
+    if(!ZkUtils.pathExists(zkClient, aclZkPath)) {
+      ZkUtils.createPersistentPath(zkClient, aclZkPath, data = "", acls = defaultAcls)
+    }
+
 
     //we still invalidate the cache every hour in case we missed any watch notifications due to re-connections.
     scheduler.startup()
@@ -76,8 +86,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     else
       None
 
-
-    trace("principal = %s , session = %s resource = %s operation = %s".format(principal, session, resource, operation))
+    trace("principal = %s , session = %s resource = %s operation = %s localUserName = %s".format(principal, session, resource, operation, localUserName))
 
     if (superUsers.contains(principal) || (localUserName.isDefined && superUsers.contains(localUserName.get))) {
       debug("principal = %s is a super user, allowing operation without checking acls.".format(principal))
@@ -156,11 +165,10 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     val updatedAcls: Set[Acl] = getAcls(resource) ++ acls
     val path: String = toResourcePath(resource)
 
-    //TODO: add acls to allow superusers to
     if(ZkUtils.pathExists(zkClient, path)) {
-      ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(updatedAcls)))
+      ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(updatedAcls)), defaultAcls)
     } else {
-      ZkUtils.createPersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(updatedAcls)))
+      ZkUtils.createPersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(updatedAcls)), defaultAcls)
     }
 
     inWriteLock(lock) {
@@ -171,6 +179,10 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   }
 
   override def removeAcls(acls: Set[Acl], resource: Resource): Boolean = {
+    if(!ZkUtils.pathExists(zkClient, toResourcePath(resource))) {
+      return false
+    }
+
     val existingAcls: Set[Acl] = getAcls(resource)
     val filteredAcls: Set[Acl] = existingAcls.filter((acl: Acl) => !acls.contains(acl))
     if(existingAcls.equals(filteredAcls)) {
@@ -178,11 +190,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     }
 
     val path: String = toResourcePath(resource)
-    if(ZkUtils.pathExists(zkClient, path)) {
-      ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(filteredAcls)))
-    } else {
-      ZkUtils.createPersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(filteredAcls)))
-    }
+    ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(filteredAcls)), defaultAcls)
 
     inWriteLock(lock) {
       aclCache.put(resource, filteredAcls)
