@@ -143,13 +143,13 @@ object ZkUtils extends Logging {
       return
     }
 
-    import scala.collection.JavaConversions._
-    val acls: List[ACL] = client.getAcl(path).getKey.toList
-    if (!DefaultAcls.equals(acls)) {
-      client.setAcl(path, DefaultAcls)
-    }
-
-    getChildren(client, path).foreach(child => makeSureCorrectAclsAreSet(client, path + "/" +child))
+//    import scala.collection.JavaConversions._
+//    val acls: List[ACL] = client.getAcl(path).getKey.toList
+//    if (!DefaultAcls.equals(acls)) {
+//      client.setAcl(path, DefaultAcls)
+//    }
+//
+//    getChildren(client, path).foreach(child => makeSureCorrectAclsAreSet(client, path + "/" +child))
   }
 
   def getLeaderForPartition(zkClient: ZkClient, topic: String, partition: Int): Option[Int] = {

@@ -15,7 +15,6 @@
 
 buildscript {
   repositories {
-    flatDir(dirs: "${rootProject.projectDir}/lib")
 
     maven {
       url = "$repoUrl"
@@ -29,7 +28,6 @@ def slf4jlog4j='org.slf4j:slf4j-log4j12:1.7.6'
 allprojects {
   apply plugin: 'idea'
   repositories {
-    flatDir(dirs: "${rootProject.projectDir}/lib")
 
     maven {
       url = "$repoUrl"
@@ -216,7 +214,7 @@ project(':core') {
     compile project(':clients')
     compile "org.scala-lang:scala-library:$scalaVersion"
     compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
-    compile name: 'zkclient-0.5'
+    compile 'com.101tec:zkclient:0.5'
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile 'net.sf.jopt-simple:jopt-simple:3.2'
 
