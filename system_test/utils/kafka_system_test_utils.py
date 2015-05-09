@@ -402,7 +402,7 @@ def generate_overriden_props_files(testsuitePathname, testcaseEnv, systemTestEnv
     # for each entity in the cluster config
     for clusterCfg in clusterConfigsList:
         cl_entity_id = clusterCfg["entity_id"]
-
+        hostname = clusterCfg["hostname"]
         # loop through testcase config list 'tcConfigsList' for a matching cluster entity_id
         for tcCfg in tcConfigsList:
             if (tcCfg["entity_id"] == cl_entity_id):
@@ -436,7 +436,7 @@ def generate_overriden_props_files(testsuitePathname, testcaseEnv, systemTestEnv
                     addedCSVConfig["kafka.metrics.polling.interval.secs"] = "5"
                     addedCSVConfig["kafka.metrics.reporters"] = "kafka.metrics.KafkaCSVMetricsReporter"
                     addedCSVConfig["kafka.csv.metrics.reporter.enabled"] = "true"
-                    addedCSVConfig["listeners"] = "PLAINTEXT://localhost:"+tcCfg["port"]
+                    addedCSVConfig["listeners"] = "PLAINTEXT://" + hostname + ":"+tcCfg["port"]
 
                     if brokerVersion == "0.7":
                         addedCSVConfig["brokerid"] = tcCfg["brokerid"]
@@ -1119,7 +1119,7 @@ def start_producer_in_thread(testcaseEnv, entityConfigList, producerConfig, kafk
                 + str(noMsgPerBatch) + "] messages with starting message id : [" + str(initMsgId) + "]", extra=d)
 
             cmdList = ["ssh " + host,
-                       "'JAVA_HOME=" + javaHome,
+                       "\'JAVA_HOME=" + javaHome,
                        "JMX_PORT=" + jmxPort,
                        "KAFKA_LOG4J_OPTS=-Dlog4j.configuration=file:%s/config/test-log4j.properties" % kafkaHome,
                        kafkaRunClassBin + " kafka.tools.ProducerPerformance",
@@ -1138,7 +1138,7 @@ def start_producer_in_thread(testcaseEnv, entityConfigList, producerConfig, kafk
                        boolArgumentsStr,
                        " >> " + producerLogPathName,
                        " & echo $! > " + producerLogPath + "/entity_" + entityId + "_pid",
-                       " & wait'"]
+                       " & wait\'"]
 
             if kafka07Client:
                 cmdList[:] = []
@@ -1281,7 +1281,7 @@ def create_topic_for_producer_performance(systemTestEnv, testcaseEnv):
                        testcaseBaseDir + "/logs/create_source_cluster_topic.log'"]
 
             cmdStr = " ".join(cmdList)
-            logger.debug("executing command: [" + cmdStr + "]", extra=d)
+            logger.info("executing command: [" + cmdStr + "]", extra=d)
             subproc = system_test_utils.sys_call_return_subproc(cmdStr)
 
 def create_topic(systemTestEnv, testcaseEnv, topic, replication_factor, num_partitions):
@@ -1494,8 +1494,6 @@ def cleanup_data_at_remote_hosts(systemTestEnv, testcaseEnv):
         else:
             remoteTestCaseBaseDir = replace_kafka_home(testCaseBaseDir, kafkaHome)
 
-        logger.info("cleaning up data dir on host: [" + hostname + "]", extra=d)
-
         if role == 'zookeeper':
             dataDir = system_test_utils.get_data_by_lookup_keyval(testcaseConfigsList, "entity_id", entityId, "dataDir")
         elif role == 'broker':
@@ -1504,6 +1502,7 @@ def cleanup_data_at_remote_hosts(systemTestEnv, testcaseEnv):
             logger.info("skipping role [" + role + "] on host : [" + hostname + "]", extra=d)
             continue
 
+        logger.info("cleaning up data dir on host: [" + hostname + "] : " + dataDir, extra=d)
         cmdStr  = "ssh " + hostname + " 'rm -rf " + dataDir + "'"
 
         if not dataDir.startswith("/tmp"):
@@ -2354,6 +2353,7 @@ def validate_index_log(systemTestEnv, testcaseEnv, clusterName="source"):
         logPathName              = get_testcase_config_log_dir_pathname(testcaseEnv, "broker", brokerEntityId, "default")
         localLogSegmentPath      = logPathName + "/" + remoteLogSegmentDir
         kafkaHome                = system_test_utils.get_data_by_lookup_keyval(clusterConfigList, "entity_id", brokerEntityId, "kafka_home")
+        javaHome                 = system_test_utils.get_data_by_lookup_keyval(clusterConfigList, "entity_id", brokerEntityId, "java_home")
         hostname                 = system_test_utils.get_data_by_lookup_keyval(clusterConfigList, "entity_id", brokerEntityId, "hostname")
         kafkaRunClassBin         = kafkaHome + "/bin/kafka-run-class.sh"
 
@@ -2372,6 +2372,10 @@ def validate_index_log(systemTestEnv, testcaseEnv, clusterName="source"):
         #        |- 00000000000000000020.log
         #        |- . . .
 
+        clusterEntityConfigDictList = systemTestEnv.clusterEntityConfigDictList
+
+        # cluster configurations:
+
         # loop through all topicPartition directories such as : test_1-0, test_1-1, ...
         for topicPartition in os.listdir(localLogSegmentPath):
             # found a topic-partition directory
@@ -2382,15 +2386,14 @@ def validate_index_log(systemTestEnv, testcaseEnv, clusterName="source"):
                 for logFile in sorted(os.listdir(localLogSegmentPath + "/" + topicPartition)):
                     # only process index file: *.index
                     if logFile.endswith(".index"):
-                        offsetLogSegmentPathName = localLogSegmentPath + "/" + topicPartition + "/" + logFile
+                        offsetLogSegmentPathName = remoteLogSegmentPathName + "/" + topicPartition + "/" + logFile
                         cmdStrList = ["ssh " + hostname,
+                                      "JAVA_HOME=" + javaHome,
                                       kafkaRunClassBin + " kafka.tools.DumpLogSegments",
                                       " --file " + offsetLogSegmentPathName,
                                       "--verify-index-only 2>&1"]
                         cmdStr     = " ".join(cmdStrList)
-
                         showMismatchedIndexOffset = False
-
                         logger.debug("executing command [" + cmdStr + "]", extra=d)
                         subproc = system_test_utils.sys_call_return_subproc(cmdStr)
                         for line in subproc.stdout.readlines():

@@ -285,6 +285,9 @@ class ReplicaBasicTest(ReplicationUtils, SetupUtils):
                             kafka_system_test_utils.validate_leader_election_successful(self.testcaseEnv, leaderDict, self.testcaseEnv.validationStatusDict)
                 
                             # trigger leader re-election by stopping leader to get re-election latency
+                            self.log_message("Stopping leader broker " + stoppedBrokerEntityId)
+                            kafka_system_test_utils.stop_remote_entity(self.systemTestEnv, stoppedBrokerEntityId, self.testcaseEnv.entityBrokerParentPidDict[stoppedBrokerEntityId])
+                            time.sleep(30)
                             #reelectionLatency = kafka_system_test_utils.get_reelection_latency(self.systemTestEnv, self.testcaseEnv, leaderDict, self.leaderAttributesDict)
                             #latencyKeyName = "Leader Election Latency - iter " + str(i) + " brokerid " + leaderDict["brokerid"]
                             #self.testcaseEnv.validationStatusDict[latencyKeyName] = str("{0:.2f}".format(reelectionLatency * 1000)) + " ms"
