@@ -431,8 +431,9 @@ private[kafka] class Processor(val id: Int,
   override def close(key: SelectionKey): Unit = {
     lruConnections.remove(key)
     val channel = socketContainer.get(channelFor(key))
-    channel.close()
-    super.close(key)
+    swallowError(channel.close())
+    key.attach(null)
+    swallowError(key.cancel())
   }
 
   private def processNewResponses() {
