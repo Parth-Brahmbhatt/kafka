@@ -30,6 +30,7 @@ import kafka.cluster.EndPoint
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.network.{TransportLayer, PlainTextTransportLayer, SSLTransportLayer,
   SaslServerAuthenticator, Authenticator, DefaultAuthenticator, Channel}
+import org.apache.kafka.common.security.auth.{PrincipalBuilder, DefaultPrincipalBuilder}
 import scala.collection._
 
 import kafka.common.KafkaException
@@ -319,21 +320,33 @@ private[kafka] class Acceptor(val host: String,
             .format(socketChannel.socket.getInetAddress, socketChannel.socket.getLocalSocketAddress,
                   socketChannel.socket.getSendBufferSize, sendBufferSize,
               socketChannel.socket.getReceiveBufferSize, recvBufferSize))
-      val transportLayer: TransportLayer = new PlainTextTransportLayer(socketChannel)
-      var authenticator: Authenticator = null
 
-      if (protocol == SecurityProtocol.PLAINTEXTSASL || protocol == SecurityProtocol.SSLSASL)
-        authenticator = new SaslServerAuthenticator(LoginManager.subject, transportLayer)
-      else
-        authenticator = new DefaultAuthenticator(transportLayer)
-
-      var channel: Channel = new Channel(transportLayer, authenticator)
+      val channel = createChannel(protocol, socketChannel)
       processor.accept(socketChannel, channel)
     } catch {
       case e: TooManyConnectionsException =>
         info("Rejected connection from %s, address already has the configured maximum of %d connections.".format(e.ip, e.count))
         close(socketChannel)
     }
+  }
+
+  private def createChannel(protocol: SecurityProtocol, socketChannel: SocketChannel) : Channel = {
+    var transportLayer: TransportLayer = null
+    if (protocol == SecurityProtocol.SSL)
+      info("create ssl ")
+    else
+      transportLayer = new PlainTextTransportLayer(socketChannel)
+
+    val principalBuilder = new DefaultPrincipalBuilder()
+    var authenticator: Authenticator = null
+
+    if (protocol == SecurityProtocol.PLAINTEXTSASL)
+      authenticator = new SaslServerAuthenticator(LoginManager.subject, transportLayer)
+    else
+      authenticator = new DefaultAuthenticator(transportLayer, principalBuilder)
+
+    val channel: Channel = new Channel(transportLayer, authenticator)
+    channel
   }
 
 }
@@ -522,15 +535,15 @@ private[kafka] class Processor(val id: Int,
       cnxn.transmit = receive
       key.attach(cnxn)
     }
-    val read = receive.readFrom(socketChannel)
-    val address = socketChannel.socket.getRemoteSocketAddress()
-    val principal = channel.userPrincipal()
-    val hostname = socketChannel.socket.getInetAddress.getCanonicalHostName
+    val read = receive.readFrom(channel)
+    val address = channel.socketChannel.socket.getRemoteSocketAddress()
+    val principal = channel.principal()
+    val hostname = channel.socketChannel.socket.getInetAddress.getCanonicalHostName
     trace(read + " bytes read from " + address)
     if(read < 0) {
       close(key)
     } else if(receive.complete) {
-      val port = socketChannel.socket().getLocalPort
+      val port = channel.socketChannel.socket().getLocalPort
       val protocol = portToProtocol.get(port)
       val session = RequestChannel.Session(principal,hostname)
       val req = RequestChannel.Request(processor = id, session = session, requestKey = key, buffer = receive.buffer, startTimeMs = time.milliseconds, remoteAddress = address, securityProtocol = protocol)

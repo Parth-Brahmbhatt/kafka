@@ -22,13 +22,14 @@ package org.apache.kafka.common.network;
  */
 
 import java.io.IOException;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-
+import javax.net.ssl.SSLSession;
 import java.security.Principal;
+
 import com.sun.security.auth.UserPrincipal;
 
 import org.slf4j.Logger;
@@ -36,13 +37,13 @@ import org.slf4j.LoggerFactory;
 
 public class PlainTextTransportLayer implements TransportLayer {
     private static final Logger log = LoggerFactory.getLogger(PlainTextTransportLayer.class);
-    SocketChannel socketChannel = null;
-    DataInputStream inStream = null;
-    DataOutputStream outStream = null;
+    private SocketChannel socketChannel = null;
+    private DataInputStream inStream = null;
+    private DataOutputStream outStream = null;
+    private UserPrincipal principal = new UserPrincipal("ANONYMOUS");
 
     public PlainTextTransportLayer(SocketChannel socketChannel) throws IOException {
         this.socketChannel = socketChannel;
-
     }
 
 
@@ -141,8 +142,12 @@ public class PlainTextTransportLayer implements TransportLayer {
         return outStream;
     }
 
-    public Principal getPeerPrincipal() {
-        return new UserPrincipal("ANONYMOUS");
+    public Principal peerPrincipal() throws IOException {
+        return principal;
+    }
+
+    public SSLSession sslSession() throws IllegalStateException, UnsupportedOperationException {
+        throw new UnsupportedOperationException("sslSession not supported for PlainTextTransportLayer");
     }
 
 }

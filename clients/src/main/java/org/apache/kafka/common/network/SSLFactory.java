@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.common.network;
 
+import java.util.Map;
+import java.util.List;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -24,10 +26,11 @@ import java.security.KeyStore;
 import javax.net.ssl.*;
 
 import org.apache.kafka.common.KafkaException;
-import org.apache.kafka.common.config.SecurityConfig;
+import org.apache.kafka.common.Configurable;
+import org.apache.kafka.clients.CommonClientConfigs;
 
 
-public class SSLFactory  {
+public class SSLFactory implements Configurable {
 
     public enum Mode { CLIENT, SERVER };
     private String protocol;
@@ -48,27 +51,37 @@ public class SSLFactory  {
         this.mode = mode;
     }
 
+    @Override
+    public void configure(Map<String, ?> configs) throws KafkaException {
+        this.protocol =  (String) configs.get(CommonClientConfigs.SSL_PROTOCOL_CONFIG);
 
-    public void init(SecurityConfig securityConfig) throws IOException, GeneralSecurityException {
-        this.protocol =  securityConfig.getString(SecurityConfig.SSL_PROTOCOL_CONFIG);
-        if (securityConfig.getList(SecurityConfig.SSL_CIPHER_SUITES_CONFIG) != null)
-         this.cipherSuites = (String[]) securityConfig.getList(SecurityConfig.SSL_CIPHER_SUITES_CONFIG).toArray();
-        if (securityConfig.getList(SecurityConfig.SSL_ENABLED_PROTOCOLS_CONFIG) != null)
-            this.enabledProtocols = (String[]) securityConfig.getList(SecurityConfig.SSL_ENABLED_PROTOCOLS_CONFIG).toArray();
-        this.requireClientCert = securityConfig.getBoolean(SecurityConfig.SSL_CLIENT_REQUIRE_CERT_CONFIG);
-        this.kmfAlgorithm = securityConfig.getString(SecurityConfig.SSL_KEYMANAGER_ALGORITHM_CONFIG);
-        this.tmfAlgorithm = securityConfig.getString(SecurityConfig.SSL_TRUSTMANAGER_ALGORITHM_CONFIG);
-        if ((mode == Mode.CLIENT && requireClientCert) || (mode == Mode.SERVER))
-            createKeystore(securityConfig.getString(SecurityConfig.SSL_KEYSTORE_TYPE_CONFIG),
-                                           securityConfig.getString(SecurityConfig.SSL_KEYSTORE_LOCATION_CONFIG),
-                                           securityConfig.getString(SecurityConfig.SSL_KEYSTORE_PASSWORD_CONFIG),
-                                           securityConfig.getString(SecurityConfig.SSL_KEY_PASSWORD_CONFIG));
-        createTruststore(securityConfig.getString(SecurityConfig.SSL_TRUSTSTORE_TYPE_CONFIG),
-                securityConfig.getString(SecurityConfig.SSL_TRUSTSTORE_LOCATION_CONFIG),
-                securityConfig.getString(SecurityConfig.SSL_TRUSTSTORE_PASSWORD_CONFIG));
+        if (configs.get(CommonClientConfigs.SSL_CIPHER_SUITES_CONFIG) != null) {
+            List<String> cipherSuitesList = (List<String>) configs.get(CommonClientConfigs.SSL_CIPHER_SUITES_CONFIG);
+            this.cipherSuites = (String[]) cipherSuitesList.toArray(new String[cipherSuitesList.size()]);
+        }
 
-        this.sslContext = createSSLContext();
+        if (configs.get(CommonClientConfigs.SSL_ENABLED_PROTOCOLS_CONFIG) != null) {
+            List<String> enabledProtocolsList = (List<String>) configs.get(CommonClientConfigs.SSL_ENABLED_PROTOCOLS_CONFIG);
+            this.enabledProtocols =  (String[]) enabledProtocolsList.toArray(new String[enabledProtocolsList.size()]);
+        }
 
+        this.requireClientCert = (Boolean) configs.get(CommonClientConfigs.SSL_CLIENT_REQUIRE_CERT_CONFIG);
+        this.kmfAlgorithm = (String) configs.get(CommonClientConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG);
+        this.tmfAlgorithm = (String) configs.get(CommonClientConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG);
+        if ((mode == Mode.CLIENT && requireClientCert) || (mode == Mode.SERVER)) {
+            createKeystore((String) configs.get(CommonClientConfigs.SSL_KEYSTORE_TYPE_CONFIG),
+                           (String) configs.get(CommonClientConfigs.SSL_KEYSTORE_LOCATION_CONFIG),
+                           (String) configs.get(CommonClientConfigs.SSL_KEYSTORE_PASSWORD_CONFIG),
+                           (String) configs.get(CommonClientConfigs.SSL_KEY_PASSWORD_CONFIG));
+        }
+        createTruststore((String) configs.get(CommonClientConfigs.SSL_TRUSTSTORE_TYPE_CONFIG),
+                         (String) configs.get(CommonClientConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG),
+                         (String) configs.get(CommonClientConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG));
+        try {
+            this.sslContext = createSSLContext();
+        } catch (Exception e) {
+            throw new KafkaException(e);
+        }
     }
 
 
@@ -183,6 +196,4 @@ public class SSLFactory  {
         }
     }
 
-    public void close() {
-    }
 }

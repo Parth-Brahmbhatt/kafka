@@ -25,6 +25,7 @@ import kafka.common.security.LoginManager
 import org.apache.kafka.common.security.kerberos.Login
 import org.apache.kafka.common.network.{Channel, TransportLayer, PlainTextTransportLayer,
   Authenticator, DefaultAuthenticator, SaslClientAuthenticator}
+import org.apache.kafka.common.security.auth.{PrincipalBuilder, DefaultPrincipalBuilder}
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.security.AuthUtils
 
@@ -66,7 +67,7 @@ class BlockingChannel( val host: String,
         socketChannel.socket.setKeepAlive(true)
         socketChannel.socket.setTcpNoDelay(true)
         socketChannel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
-        channel = createChannel(socketChannel)
+        channel = createChannel(protocol, socketChannel)
         while(!channel.isReady) channel.connect(true, true);
         writeChannel = channel
         readChannel = Channels.newChannel(channel.socketChannel().socket().getInputStream)
@@ -122,19 +123,17 @@ class BlockingChannel( val host: String,
     response
   }
 
-  private def createChannel(socketChannel: SocketChannel): Channel = {
+  private def createChannel(protocol: SecurityProtocol, socketChannel: SocketChannel) : Channel = {
     var transportLayer: TransportLayer = null
     var authenticator: Authenticator = null
+    val principalBuilder = new DefaultPrincipalBuilder()
 
-    if (protocol == SecurityProtocol.SSL || protocol == SecurityProtocol.SSLSASL)
-      transportLayer = new PlainTextTransportLayer(socketChannel)
-    else
-      transportLayer = new PlainTextTransportLayer(socketChannel)
+    transportLayer = new PlainTextTransportLayer(socketChannel)
 
-    if(protocol == SecurityProtocol.PLAINTEXTSASL || protocol == SecurityProtocol.SSLSASL)
+    if (protocol == SecurityProtocol.PLAINTEXTSASL)
       authenticator = new SaslClientAuthenticator(LoginManager.subject, transportLayer, LoginManager.serviceName, host)
     else
-      authenticator = new DefaultAuthenticator(transportLayer)
+      authenticator = new DefaultAuthenticator(transportLayer, principalBuilder)
 
     new Channel(transportLayer, authenticator)
   }

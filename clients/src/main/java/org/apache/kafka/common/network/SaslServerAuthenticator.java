@@ -72,18 +72,15 @@ public class SaslServerAuthenticator implements Authenticator {
 
     private SaslState saslState = SaslState.INITIAL;
 
-    public SaslServerAuthenticator(final Subject subject, TransportLayer transportLayer) {
+    public SaslServerAuthenticator(final Subject subject, TransportLayer transportLayer) throws IOException {
         this.transportLayer = transportLayer;
         this.subject = subject;
-    }
-
-    public void init() throws IOException {
         saslServer = createSaslServer();
     }
 
     private SaslServer createSaslServer() throws IOException {
         if(subject != null) {
-            // server is using a JAAS-authenticated subject: determine service principal name and hostname from zk server's subject.
+            // server is using a JAAS-authenticated subject: determine service principal name and hostname from kafka server's subject.
             if (subject.getPrincipals().size() > 0) {
                 try {
                     saslServerCallbackHandler = new SaslServerCallbackHandler(Configuration.getConfiguration());
@@ -237,7 +234,7 @@ public class SaslServerAuthenticator implements Authenticator {
         return result;
     }
 
-    public UserPrincipal userPrincipal() {
+    public Principal principal() {
         return new UserPrincipal(saslServer.getAuthorizationID());
     }
 
@@ -248,6 +245,5 @@ public class SaslServerAuthenticator implements Authenticator {
     public void close() throws IOException {
         saslServer.dispose();
     }
-
 
  }

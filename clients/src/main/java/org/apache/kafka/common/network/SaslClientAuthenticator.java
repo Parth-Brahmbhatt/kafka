@@ -76,15 +76,12 @@ public class SaslClientAuthenticator implements Authenticator {
 
     private SaslState saslState = SaslState.INITIAL;
 
-    public SaslClientAuthenticator(Subject subject, TransportLayer transportLayer, String servicePrincipal, String host) {
+    public SaslClientAuthenticator(Subject subject, TransportLayer transportLayer, String servicePrincipal, String host) throws IOException {
         this.transportLayer = transportLayer;
         this.subject = subject;
         this.host = host;
         this.servicePrincipal = servicePrincipal;
-    }
-
-    public void init() {
-        saslClient = createSaslClient();
+        this.saslClient = createSaslClient();
     }
 
     private SaslClient createSaslClient() {
@@ -164,7 +161,7 @@ public class SaslClientAuthenticator implements Authenticator {
         return (SelectionKey.OP_WRITE | SelectionKey.OP_WRITE);
     }
 
-    public UserPrincipal userPrincipal() {
+    public Principal principal() {
         return new UserPrincipal("ANONYMOUS");
     }
 
