@@ -599,7 +599,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         if (firstException.get() != null && !swallowException)
             throw new KafkaException("Failed to close kafka producer", firstException.get());
     }
-    
+
     private static class FutureFailure implements Future<RecordMetadata> {
 
         private final ExecutionException exception;
