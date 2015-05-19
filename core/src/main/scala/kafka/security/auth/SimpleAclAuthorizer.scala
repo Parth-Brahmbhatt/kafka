@@ -16,6 +16,8 @@
  */
 package kafka.security.auth
 
+import java.io.FileInputStream
+import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
@@ -29,15 +31,19 @@ import org.apache.zookeeper.data.{Id, ACL}
 
 class SimpleAclAuthorizer extends Authorizer with Logging {
 
-  private var superUsers: Set[KafkaPrincipal] = null
+  private val zkUrlProp: String = "zookeeper.url"
+  private val allowEveryoneProp: String = "allow.everyone"
+
+  private var superUsers: Set[KafkaPrincipal] = Set.empty
   private var zkClient: ZkClient = null
-  private var principalToLocalPlugin: Option[PrincipalToLocal] = null
-  private var defaultAcls: List[ACL] = null
+  private var principalToLocalPlugin: Option[PrincipalToLocal] = None
+  private var defaultAcls: List[ACL] = List.empty
   private val scheduler: KafkaScheduler = new KafkaScheduler(threads = 1 , threadNamePrefix = "authorizer")
   private val aclZkPath: String = "/kafka-acl"
   private val aclChangedZkPath: String = "/kafka-acl-changed"
   private val aclCache: scala.collection.mutable.HashMap[Resource, Set[Acl]] = new scala.collection.mutable.HashMap[Resource, Set[Acl]]
   private val lock = new ReentrantReadWriteLock()
+  private val authorizerConfig: Properties = new Properties();
 
   /**
    * Guaranteed to be called before any authorize call is made.
@@ -53,7 +59,15 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     else
       None
 
-    zkClient = new ZkClient(kafkaConfig.zkConnect, kafkaConfig.zkConnectionTimeoutMs, kafkaConfig.zkConnectionTimeoutMs, ZKStringSerializer)
+    if(kafkaConfig.authorizerConfigPath != null && !kafkaConfig.authorizerConfigPath.isEmpty) {
+      authorizerConfig.load(new FileInputStream(kafkaConfig.authorizerConfigPath.trim))
+    }
+
+    val zkUrl: String = if (authorizerConfig.containsKey(zkUrlProp))
+      authorizerConfig.getProperty(zkUrlProp)
+    else
+      kafkaConfig.zkConnect
+    zkClient = new ZkClient(zkUrl, kafkaConfig.zkConnectionTimeoutMs, kafkaConfig.zkConnectionTimeoutMs, ZKStringSerializer)
     zkClient.subscribeDataChanges(aclChangedZkPath, ZkListener)
 
     import scala.collection.JavaConversions._
@@ -66,7 +80,6 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     if(!ZkUtils.pathExists(zkClient, aclZkPath)) {
       ZkUtils.createPersistentPath(zkClient, aclZkPath, data = "", acls = defaultAcls)
     }
-
 
     //we still invalidate the cache every hour in case we missed any watch notifications due to re-connections.
     scheduler.startup()
@@ -100,8 +113,13 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
     val acls: Set[Acl] = getAcls(resource)
     if (acls == null || acls.isEmpty) {
-      debug("No acl found for resource %s , failing authorization".format(resource))
-      return false
+      val authorized: Boolean = if(authorizerConfig.containsKey(allowEveryoneProp))
+        authorizerConfig.getProperty(allowEveryoneProp).toBoolean
+      else
+        false
+
+      debug("No acl found for resource %s , authorized = %s".format(resource, authorized))
+      return authorized
     }
 
     /**

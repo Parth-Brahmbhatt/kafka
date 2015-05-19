@@ -170,6 +170,16 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     assertFalse("when acls = [],  authorizer should fail close.", simpleAclAuthorizer.authorize(session, Operation.READ, resource))
   }
 
+  def testNoAclFoundOverride(): Unit = {
+    val props = TestUtils.createBrokerConfig(1, zkConnect)
+    props.put(KafkaConfig.AuthorizerConfigPathProp, Thread.currentThread().getContextClassLoader.getResource("authorizer-config.properties").getPath)
+
+    val cfg = KafkaConfig.fromProps(props)
+    val testAuthoizer: SimpleAclAuthorizer = new SimpleAclAuthorizer
+    testAuthoizer.initialize(cfg)
+    assertTrue("when acls = null or [],  authorizer should fail open with allow.everyone = true.", testAuthoizer.authorize(session, Operation.READ, resource))
+  }
+
   def testFailOpenOnProgrammingErrors(): Unit = {
     assertTrue("null session should fail open.", simpleAclAuthorizer.authorize(null, Operation.READ, resource))
     assertTrue("null principal should fail open.", simpleAclAuthorizer.authorize(new Session(null, testHostName), Operation.READ, resource))
@@ -191,13 +201,15 @@ class SimpleAclAuthorizerTest extends JUnit3Suite with ZooKeeperTestHarness {
     simpleAclAuthorizer.addAcls(Set[Acl](acl2), resource)
     assertEquals(Set(acl1,acl2), simpleAclAuthorizer.getAcls(resource))
 
+//    Fails transiently, needs investigation.
+//    //Following assertions fails transiently due to consistency issues.
 //    //test remove a single acl from existing acls.
 //    val acl3: Acl = new Acl(Set(user2), PermissionType.ALLOW, Set[String](Acl.wildCardHost), Set[Operation](Operation.READ))
 //    simpleAclAuthorizer.removeAcls(Set(acl3), resource)
 //    assertEquals(Set(acl1), simpleAclAuthorizer.getAcls(resource))
-
-    //test remove all acls for resource-- this fails transiently because even in process zookeeper seems to be eventually consistent.
-    //simpleAclAuthorizer.removeAcls( resource)
-    //assertTrue(simpleAclAuthorizer.getAcls(resource).isEmpty)
+//
+//    //test remove all acls for resource
+//    simpleAclAuthorizer.removeAcls( resource)
+//    assertTrue(simpleAclAuthorizer.getAcls(resource).isEmpty)
   }
 }

@@ -17,6 +17,7 @@
 
 package kafka.admin
 
+import java.io.{File, FileInputStream}
 import java.util.Properties
 
 import joptsimple._
@@ -38,10 +39,10 @@ object AclCommand {
       CommandLineUtils.printUsageAndDie(opts.parser, "Command must include exactly one action: --list, --describe, --create, --alter or --delete")
     }
 
-    val authZ: Authorizer = CoreUtils.createObject(opts.options.valueOf(opts.authorizerClassNameOpt))
     val props: Properties = new Properties()
-    props.put(KafkaConfig.ZkConnectProp, opts.options.valueOf(opts.zkConnectOpt))
+    props.load(new FileInputStream(new File(opts.options.valueOf(opts.config))))
     val kafkaConfig: KafkaConfig = KafkaConfig.fromProps(props)
+    val authZ: Authorizer = CoreUtils.createObject(kafkaConfig.authorizerClassName)
     authZ.initialize(kafkaConfig)
 
     val actions = Seq(opts.addOpt, opts.removeOpt).count(opts.options.has _)
@@ -148,15 +149,10 @@ object AclCommand {
 
   class AclCommandOptions(args: Array[String]) {
     val parser = new OptionParser
-    val zkConnectOpt = parser.accepts("zookeeper", "REQUIRED: The connection string for the zookeeper connection in the form host:port. " +
-                                      "Multiple URLS can be given to allow fail-over. This zookeeper may get used as the acl store by authorizer.")
+    val config = parser.accepts("config", "REQUIRED: Path to a server.properties file")
                            .withRequiredArg
-                           .describedAs("urls")
+                           .describedAs("config")
                            .ofType(classOf[String])
-    val authorizerClassNameOpt = parser.accepts("authorizer", "REQUIRED: fully qualified class name of the authorizer implementation i.e. kafka.security.auth.SimpleAclAuthorizer")
-      .withRequiredArg
-      .describedAs("authorizer")
-      .ofType(classOf[String])
 
     val topicOpt = parser.accepts("topic", "topic to which acls should be added or removed.")
       .withRequiredArg
@@ -182,7 +178,7 @@ object AclCommand {
       .describedAs("allowprincipals")
       .ofType(classOf[String])
 
-    val denyPrincipalsOpt = parser.accepts("denyprincipasl", "comma separated list of principals where principal is in principalType: name format")
+    val denyPrincipalsOpt = parser.accepts("denyprincipals", "comma separated list of principals where principal is in principalType: name format")
       .withRequiredArg
       .describedAs("denyPrincipalsOpt")
       .ofType(classOf[String])
@@ -203,7 +199,7 @@ object AclCommand {
 
     def checkArgs() {
       // check required args
-      CommandLineUtils.checkRequiredArgs(parser, options, zkConnectOpt, authorizerClassNameOpt)
+      CommandLineUtils.checkRequiredArgs(parser, options, config)
     }
   }
   
