@@ -17,8 +17,10 @@
 
 package kafka.common
 
-import kafka.message.InvalidMessageException
 import java.nio.ByteBuffer
+
+import kafka.message.InvalidMessageException
+
 import scala.Predef._
 
 /**
@@ -51,6 +53,7 @@ object ErrorMapping {
   val NotEnoughReplicasAfterAppendCode: Short = 20
   // 21: InvalidRequiredAcks
   // 22: IllegalConsumerGeneration
+  val AuthorizationCode: Short = 24;
 
   private val exceptionToCode =
     Map[Class[Throwable], Short](
@@ -72,7 +75,8 @@ object ErrorMapping {
       classOf[InvalidTopicException].asInstanceOf[Class[Throwable]] -> InvalidTopicCode,
       classOf[MessageSetSizeTooLargeException].asInstanceOf[Class[Throwable]] -> MessageSetSizeTooLargeCode,
       classOf[NotEnoughReplicasException].asInstanceOf[Class[Throwable]] -> NotEnoughReplicasCode,
-      classOf[NotEnoughReplicasAfterAppendException].asInstanceOf[Class[Throwable]] -> NotEnoughReplicasAfterAppendCode
+      classOf[NotEnoughReplicasAfterAppendException].asInstanceOf[Class[Throwable]] -> NotEnoughReplicasAfterAppendCode,
+      classOf[AuthorizationException].asInstanceOf[Class[Throwable]] -> AuthorizationCode
     ).withDefaultValue(UnknownCode)
 
   /* invert the mapping */
