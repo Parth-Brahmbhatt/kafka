@@ -17,25 +17,25 @@
 
 package kafka.server
 
-import kafka.admin._
-import kafka.log.LogConfig
-import kafka.log.CleanerConfig
-import kafka.log.LogManager
-import kafka.utils._
-import java.util.concurrent._
-import atomic.{AtomicInteger, AtomicBoolean}
 import java.io.File
+import java.util.concurrent._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
-import collection.mutable
-import org.I0Itec.zkclient.ZkClient
-import kafka.controller.{ControllerStats, KafkaController}
-import kafka.cluster.{EndPoint, Broker}
-import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
-import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException}
-import kafka.network.{Receive, BlockingChannel, SocketServer}
-import kafka.metrics.KafkaMetricsGroup
 import com.yammer.metrics.core.Gauge
+import kafka.admin._
+import kafka.api.{ControlledShutdownRequest, ControlledShutdownResponse}
+import kafka.cluster.{Broker, EndPoint}
+import kafka.common.{ErrorMapping, GenerateBrokerIdException, InconsistentBrokerIdException}
+import kafka.controller.{ControllerStats, KafkaController}
 import kafka.coordinator.ConsumerCoordinator
+import kafka.log.{CleanerConfig, LogConfig, LogManager}
+import kafka.metrics.KafkaMetricsGroup
+import kafka.network.{BlockingChannel, Receive, SocketServer}
+import kafka.security.auth.Authorizer
+import kafka.utils._
+import org.I0Itec.zkclient.ZkClient
+
+import scala.collection.mutable
 
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
@@ -70,8 +70,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var kafkaHealthcheck: KafkaHealthcheck = null
   val metadataCache: MetadataCache = new MetadataCache(config.brokerId)
-
-
 
   var zkClient: ZkClient = null
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -144,9 +142,19 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
           consumerCoordinator = new ConsumerCoordinator(config, zkClient, offsetManager)
           consumerCoordinator.startup()
 
+
+          /* Get the authorizer and initialize it if one is specified.*/
+          val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
+            val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
+            authZ.initialize(config)
+            Option(authZ)
+          } else {
+            None
+          }
+
           /* start processing requests */
           apis = new KafkaApis(socketServer.requestChannel, replicaManager, offsetManager, consumerCoordinator,
-            kafkaController, zkClient, config.brokerId, config, metadataCache)
+            kafkaController, zkClient, config.brokerId, config, metadataCache, authorizer)
           requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
           brokerState.newState(RunningAsBroker)
 

@@ -42,6 +42,12 @@ object Defaults {
   val BackgroundThreads = 10
   val QueuedMaxRequests = 500
 
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassName = ""
+  val SuperUser = ""
+  val PrincipalToLocal = ""
+  val AuthorizerConfigPath = ""
+
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
   val HostName: String = new String("")
@@ -147,6 +153,11 @@ object KafkaConfig {
   val NumIoThreadsProp = "num.io.threads"
   val BackgroundThreadsProp = "background.threads"
   val QueuedMaxRequestsProp = "queued.max.requests"
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassNameProp = "authorizer.class.name"
+  val SuperUserProp = "super.users"
+  val PrincipalToLocalProp = "principal.to.local.class"
+  val AuthorizerConfigPathProp = "authorizer.config.path"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -257,6 +268,11 @@ object KafkaConfig {
   val NumIoThreadsDoc = "The number of io threads that the server uses for carrying out network requests"
   val BackgroundThreadsDoc = "The number of threads to use for various background processing tasks"
   val QueuedMaxRequestsDoc = "The number of queued requests allowed before blocking the network threads"
+  /************* Authorizer Configuration ***********/
+  val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
+  val SuperUserDoc = "Comma seperated list of users that will have super user access to the cluster and all the topics."
+  val PrincipalToLocalDoc = "Name of the class that converts a principal to local user."
+  val AuthorizerConfigPathDoc = "Path to a authorizer configuration property file that will be used by the authorizer implementation."
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -372,8 +388,7 @@ object KafkaConfig {
   val DeleteTopicEnableDoc = "Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off"
   val CompressionTypeDoc = "Specify the final compression type for a given topic. This configuration accepts the standard compression codecs " +
     "('gzip', 'snappy', lz4). It additionally accepts 'uncompressed' which is equivalent to no compression; and " +
-    "'producer' which means retain the original compression codec set by the producer."
-
+  "'producer' which means retain the original compression codec set by the producer."
 
   private val configDef = {
     import ConfigDef.Range._
@@ -397,6 +412,12 @@ object KafkaConfig {
       .define(NumIoThreadsProp, INT, Defaults.NumIoThreads, atLeast(1), HIGH, NumIoThreadsDoc)
       .define(BackgroundThreadsProp, INT, Defaults.BackgroundThreads, atLeast(1), HIGH, BackgroundThreadsDoc)
       .define(QueuedMaxRequestsProp, INT, Defaults.QueuedMaxRequests, atLeast(1), HIGH, QueuedMaxRequestsDoc)
+
+      /************* Authorizer Configuration ***********/
+      .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
+      .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
+      .define(PrincipalToLocalProp, STRING, Defaults.PrincipalToLocal, LOW, PrincipalToLocalDoc)
+      .define(AuthorizerConfigPathProp, STRING, Defaults.AuthorizerConfigPath, LOW, AuthorizerConfigPathDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -522,6 +543,12 @@ object KafkaConfig {
       numIoThreads = parsed.get(NumIoThreadsProp).asInstanceOf[Int],
       backgroundThreads = parsed.get(BackgroundThreadsProp).asInstanceOf[Int],
       queuedMaxRequests = parsed.get(QueuedMaxRequestsProp).asInstanceOf[Int],
+
+      /************* Authorizer Configuration ***********/
+      authorizerClassName = parsed.get(AuthorizerClassNameProp).asInstanceOf[String],
+      superUser =  parsed.get(SuperUserProp).asInstanceOf[String],
+      principalToLocal = parsed.get(PrincipalToLocalProp).asInstanceOf[String],
+      authorizerConfigPath = parsed.get(AuthorizerConfigPathProp).asInstanceOf[String],
 
       /** ********* Socket Server Configuration ***********/
       port = parsed.get(PortProp).asInstanceOf[Int],
@@ -667,6 +694,12 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
                   val numIoThreads: Int = Defaults.NumIoThreads,
                   val backgroundThreads: Int = Defaults.BackgroundThreads,
                   val queuedMaxRequests: Int = Defaults.QueuedMaxRequests,
+
+                  /************* Authorizer Configuration ***********/
+                  val authorizerClassName: String = Defaults.AuthorizerClassName,
+                  val superUser: String = Defaults.SuperUser,
+                  val principalToLocal: String = Defaults.PrincipalToLocal,
+                  val authorizerConfigPath: String = Defaults.AuthorizerConfigPath,
 
                   /** ********* Socket Server Configuration ***********/
                   val port: Int = Defaults.Port,
@@ -893,6 +926,12 @@ class KafkaConfig(/** ********* Zookeeper Configuration ***********/
     props.put(NumIoThreadsProp, numIoThreads.toString)
     props.put(BackgroundThreadsProp, backgroundThreads.toString)
     props.put(QueuedMaxRequestsProp, queuedMaxRequests.toString)
+
+    /************* Authorizer Configuration ***********/
+    props.put(AuthorizerClassNameProp, authorizerClassName.toString)
+    props.put(SuperUserProp, superUser.toString)
+    props.put(PrincipalToLocalProp, principalToLocal.toString)
+    props.put(AuthorizerConfigPathProp, authorizerConfigPath.toString)
 
     /** ********* Socket Server Configuration ***********/
     props.put(PortProp, port.toString)
