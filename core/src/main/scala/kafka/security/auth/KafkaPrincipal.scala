@@ -19,11 +19,11 @@ package kafka.security.auth
 import java.security.Principal
 
 object KafkaPrincipal {
-  val seperator: String = ":"
-  val userType: String = "User"
+  val Seperator: String = ":"
+  val UserType: String = "User"
 
   def fromString(str: String) : KafkaPrincipal = {
-    val arr: Array[String] = str.split(seperator)
+    val arr: Array[String] = str.split(Seperator)
 
     if(arr.length != 2) {
       throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)
@@ -40,12 +40,15 @@ object KafkaPrincipal {
  */
 class KafkaPrincipal(val principalType: String,val name: String) extends Principal {
 
+  if(principalType == null || name == null)
+    throw new IllegalArgumentException("principalType and name can not be null")
+
   override def getName: String = {
     name
   }
 
   override def toString: String = {
-    principalType + KafkaPrincipal.seperator + name
+    principalType + KafkaPrincipal.Seperator + name
   }
 
   override def equals(that: Any): Boolean = {
