@@ -17,15 +17,15 @@
 package kafka.security.auth
 
 object Resource {
-  val separator: String = ":"
-  val clusterResourceName: String = "kafka-cluster"
-  val clusterResource: Resource = new Resource(ResourceType.CLUSTER,Resource.clusterResourceName)
+  val Separator: String = ":"
+  val ClusterResourceName: String = "kafka-cluster"
+  val ClusterResource: Resource = new Resource(ResourceType.CLUSTER,Resource.ClusterResourceName)
 
   def fromString(str: String) : Resource = {
-    val arr: Array[String] = str.split(separator)
+    val arr: Array[String] = str.split(Separator)
 
     if(arr.length != 2) {
-      throw new IllegalArgumentException("expected a string in format resourceType:name but got " + str + ".allowed resource types are" + ResourceType.values())
+      throw new IllegalArgumentException("Expected a string in format ResourceType:Name but got " + str + ". Allowed resource types are" + ResourceType.values())
     }
 
     new Resource(ResourceType.fromString(arr(0)), arr(1))
@@ -41,7 +41,7 @@ object Resource {
 class Resource(val resourceType: ResourceType,val name: String) {
 
   override def toString: String = {
-    resourceType.name() + Resource.separator + name
+    resourceType.name() + Resource.Separator + name
   }
 
   override def equals(that: Any): Boolean = {

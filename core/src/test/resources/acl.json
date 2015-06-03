@@ -11,7 +11,7 @@
         "READ",
         "WRITE"
       ],
-      "principal": ["user:alice", "user:bob"]
+      "principals": ["user:alice", "user:bob"]
     },
     {
       "hosts": [
@@ -22,7 +22,7 @@
         "READ",
         "WRITE"
       ],
-      "principal": ["user:bob"]
+      "principals": ["user:bob"]
     },
     {
       "hosts": [
@@ -33,7 +33,7 @@
       "operations": [
         "read"
       ],
-      "principal": ["user:bob"]
+      "principals": ["user:bob"]
     }
   ]
 }

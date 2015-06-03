@@ -23,14 +23,40 @@ object Acl {
   val wildCardPrincipal: KafkaPrincipal = new KafkaPrincipal("user", "*")
   val wildCardHost: String = "*"
   val allowAllAcl = new Acl(Set[KafkaPrincipal](wildCardPrincipal), PermissionType.ALLOW, Set[String](wildCardHost), Set[Operation](Operation.ALL))
-  val PRINCIPAL_KEY = "principal"
-  val PERMISSION_TYPE_KEY = "permissionType"
-  val OPERATIONS_KEY = "operations"
-  val HOSTS_KEY = "hosts"
-  val VERSION_KEY = "version"
-  val CURRENT_VERSION = 1
-  val ACLS_KEY = "acls"
+  val principalKey = "principals"
+  val permissionTypeKey = "permissionType"
+  val operationKey = "operations"
+  val hostsKey = "hosts"
+  val versionKey = "version"
+  val currentVersion = 1
+  val aclsKey = "acls"
 
+  /**
+   *
+   * @param aclJson
+   *
+   * <p>
+      {
+        "version": 1,
+        "acls": [
+          {
+            "hosts": [
+              "host1",
+              "host2"
+            ],
+            "permissionType": "DENY",
+            "operations": [
+              "READ",
+              "WRITE"
+            ],
+            "principal": ["user:alice", "user:bob"]
+          }
+        ]
+      }
+   * </p>
+   *
+   * @return
+   */
   def fromJson(aclJson: String): Set[Acl] = {
     if(aclJson == null || aclJson.isEmpty) {
       return collection.immutable.Set.empty[Acl]
@@ -40,13 +66,13 @@ object Acl {
       case Some(m) =>
         val aclMap = m.asInstanceOf[Map[String, Any]]
         //the acl json version.
-        require(aclMap.get(VERSION_KEY).get == CURRENT_VERSION)
-        val aclSet: List[Map[String, Any]] = aclMap.get(ACLS_KEY).get.asInstanceOf[List[Map[String, Any]]]
+        require(aclMap(versionKey) == currentVersion)
+        val aclSet: List[Map[String, Any]] = aclMap.get(aclsKey).get.asInstanceOf[List[Map[String, Any]]]
         aclSet.foreach(item => {
-          val principals: List[KafkaPrincipal] = item(PRINCIPAL_KEY).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
-          val permissionType: PermissionType = PermissionType.valueOf(item(PERMISSION_TYPE_KEY).asInstanceOf[String])
-          val operations: List[Operation] = item(OPERATIONS_KEY).asInstanceOf[List[String]].map(operation => Operation.fromString(operation))
-          val hosts: List[String] = item(HOSTS_KEY).asInstanceOf[List[String]]
+          val principals: List[KafkaPrincipal] = item(principalKey).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
+          val permissionType: PermissionType = PermissionType.valueOf(item(permissionTypeKey).asInstanceOf[String])
+          val operations: List[Operation] = item(operationKey).asInstanceOf[List[String]].map(operation => Operation.fromString(operation))
+          val hosts: List[String] = item(hostsKey).asInstanceOf[List[String]]
           acls += new Acl(principals.toSet, permissionType, hosts.toSet, operations.toSet)
         })
       case None =>
@@ -56,7 +82,7 @@ object Acl {
 
   def toJsonCompatibleMap(acls: Set[Acl]): Map[String,Any] = {
     acls match {
-      case aclSet: Set[Acl] => Map(Acl.VERSION_KEY -> Acl.CURRENT_VERSION, Acl.ACLS_KEY -> aclSet.map(acl => acl.toMap).toList)
+      case aclSet: Set[Acl] => Map(Acl.versionKey -> Acl.currentVersion, Acl.aclsKey -> aclSet.map(acl => acl.toMap).toList)
       case _ => null
     }
   }
@@ -82,10 +108,10 @@ class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType
    */
   def toMap() : Map[String, Any] = {
     val map: collection.mutable.HashMap[String, Any] = new collection.mutable.HashMap[String, Any]()
-    map.put(Acl.PRINCIPAL_KEY, principals.map(principal => principal.toString))
-    map.put(Acl.PERMISSION_TYPE_KEY, permissionType.name())
-    map.put(Acl.OPERATIONS_KEY, operations.map(operation => operation.name()))
-    map.put(Acl.HOSTS_KEY, hosts)
+    map.put(Acl.principalKey, principals.map(principal => principal.toString))
+    map.put(Acl.permissionTypeKey, permissionType.name())
+    map.put(Acl.operationKey, operations.map(operation => operation.name()))
+    map.put(Acl.hostsKey, hosts)
 
     map.toMap
   }
