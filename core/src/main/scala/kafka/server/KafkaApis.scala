@@ -620,9 +620,11 @@ class KafkaApis(val requestChannel: RequestChannel,
       throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to read from consumer group" + consumerMetadataRequest.group )
     }
 
-    if(metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol).isEmpty &&
-      authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CREATE, Resource.ClusterResource)) {
-      throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to create " + ConsumerCoordinator.OffsetsTopicName)
+    val topicResponses = metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol)
+    if(topicResponses.isEmpty) {
+      if (authorizer.isDefined && !authorizer.get.authorize(request.session, Operation.CREATE, Resource.ClusterResource)) {
+        throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to create " + ConsumerCoordinator.OffsetsTopicName)
+      }
     }
 
     //get metadata (and create the topic if necessary)
