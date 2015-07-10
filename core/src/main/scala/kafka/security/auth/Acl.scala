@@ -22,7 +22,7 @@ import kafka.utils.Json
 object Acl {
   val wildCardPrincipal: KafkaPrincipal = new KafkaPrincipal("user", "*")
   val wildCardHost: String = "*"
-  val allowAllAcl = new Acl(Set[KafkaPrincipal](wildCardPrincipal), PermissionType.ALLOW, Set[String](wildCardHost), Set[Operation](Operation.ALL))
+  val allowAllAcl = new Acl(Set[KafkaPrincipal](wildCardPrincipal), PermissionType.ALLOW, Set[String](wildCardHost), Set[Operation](All))
   val principalKey = "principals"
   val permissionTypeKey = "permissionType"
   val operationKey = "operations"
@@ -110,7 +110,7 @@ class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType
     val map: collection.mutable.HashMap[String, Any] = new collection.mutable.HashMap[String, Any]()
     map.put(Acl.principalKey, principals.map(principal => principal.toString))
     map.put(Acl.permissionTypeKey, permissionType.name())
-    map.put(Acl.operationKey, operations.map(operation => operation.name()))
+    map.put(Acl.operationKey, operations.map(operation => operation.name))
     map.put(Acl.hostsKey, hosts)
 
     map.toMap
