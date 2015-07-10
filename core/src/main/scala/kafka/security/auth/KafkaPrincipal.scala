@@ -23,7 +23,7 @@ object KafkaPrincipal {
   val UserType: String = "User"
 
   def fromString(str: String) : KafkaPrincipal = {
-    val arr: Array[String] = str.split(Seperator)
+    val arr: Array[String] = str.split(Seperator, 2) //only split in two parts
 
     if(arr.length != 2) {
       throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)

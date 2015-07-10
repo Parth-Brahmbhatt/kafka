@@ -19,7 +19,7 @@ package kafka.security.auth
 object Resource {
   val Separator: String = ":"
   val ClusterResourceName: String = "kafka-cluster"
-  val ClusterResource: Resource = new Resource(ResourceType.CLUSTER,Resource.ClusterResourceName)
+  val ClusterResource: Resource = new Resource(Cluster,Resource.ClusterResourceName)
 
   def fromString(str: String) : Resource = {
     val arr: Array[String] = str.split(Separator)
@@ -41,7 +41,7 @@ object Resource {
 class Resource(val resourceType: ResourceType,val name: String) {
 
   override def toString: String = {
-    resourceType.name() + Resource.Separator + name
+    resourceType.name + Resource.Separator + name
   }
 
   override def equals(that: Any): Boolean = {

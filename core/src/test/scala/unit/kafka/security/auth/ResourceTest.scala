@@ -16,8 +16,8 @@
  */
 package unit.kafka.security.auth
 
-import kafka.security.auth.Resource
-import kafka.security.auth.ResourceType
+import kafka.security.auth.{ConsumerGroup, Resource, Topic}
+
 import org.junit.Assert
 import org.scalatest.junit.JUnit3Suite
 
@@ -25,19 +25,19 @@ class ResourceTest extends JUnit3Suite   {
 
   def testEqualsAndHashCode(): Unit = {
     //check equals is not sensitive to case.
-    val resource1: Resource = Resource.fromString(ResourceType.TOPIC.name().toLowerCase + ":test")
-    val resource2: Resource = Resource.fromString(ResourceType.TOPIC.name().toUpperCase() + ":TEST")
+    val resource1: Resource = Resource.fromString(Topic.name.toLowerCase + ":test")
+    val resource2: Resource = Resource.fromString(Topic.name.toUpperCase() + ":TEST")
     Assert.assertEquals(resource1, resource2)
     Assert.assertEquals(resource1.hashCode(), resource2.hashCode())
 
-    val resource3: Resource = Resource.fromString(ResourceType.TOPIC.name() + ":test")
-    val resource4: Resource = Resource.fromString(ResourceType.TOPIC.name() + ":TEST1")
+    val resource3: Resource = Resource.fromString(Topic.name + ":test")
+    val resource4: Resource = Resource.fromString(Topic.name + ":TEST1")
     //if name does not match returns false
     Assert.assertFalse(resource3.equals(resource4))
 
     //if type does not match return false
-    val resource5: Resource = Resource.fromString(ResourceType.TOPIC.name() + ":test")
-    val resource6: Resource = Resource.fromString(ResourceType.CONSUMER_GROUP.name() + ":test")
+    val resource5: Resource = Resource.fromString(Topic.name + ":test")
+    val resource6: Resource = Resource.fromString(ConsumerGroup.name + ":test")
     Assert.assertFalse(resource5.equals(resource6))
   }
 }

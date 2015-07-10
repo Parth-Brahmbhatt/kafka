@@ -40,4 +40,13 @@ class KafkaPrincipalTest extends JUnit3Suite   {
     val principal6:KafkaPrincipal = KafkaPrincipal.fromString("group:test")
     Assert.assertFalse(principal5.equals(principal6))
   }
+
+  def testPrincipalNameCanContainSeparator: Unit = {
+    val principalType: String = "user"
+    val name: String = "name:with:" + KafkaPrincipal.Seperator + ":in:it"
+
+    val principal = KafkaPrincipal.fromString(principalType + KafkaPrincipal.Seperator + name)
+    Assert.assertEquals(principalType, principal.principalType)
+    Assert.assertEquals(name, principal.name)
+  }
 }
