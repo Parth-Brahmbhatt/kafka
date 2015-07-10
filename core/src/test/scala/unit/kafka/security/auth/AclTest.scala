@@ -24,6 +24,7 @@ import org.scalatest.junit.JUnit3Suite
 class AclTest extends JUnit3Suite   {
 
 
+  val aclJson = "{\"version\": 1, \"acls\": [{\"hosts\": [\"host1\",\"host2\"],\"permissionType\": \"DENY\",\"operations\": [\"READ\",\"WRITE\"],\"principals\": [\"user:alice\", \"user:bob\"]  },  {  \"hosts\": [  \"*\"  ],  \"permissionType\": \"ALLOW\",  \"operations\": [  \"READ\",  \"WRITE\"  ],  \"principals\": [\"user:bob\"]  },  {  \"hosts\": [  \"host1\",  \"host2\"  ],  \"permissionType\": \"DENY\",  \"operations\": [  \"read\"  ],  \"principals\": [\"user:bob\"]  }  ]}"
   def testAclJsonConversion(): Unit = {
     val acl1: Acl = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "alice"), new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), PermissionType.DENY, Set[String]("host1","host2"), Set[Operation](Read, Write))
     val acl2: Acl = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), PermissionType.ALLOW, Set[String]("*"), Set[Operation](Read, Write))
@@ -33,11 +34,7 @@ class AclTest extends JUnit3Suite   {
     val jsonAcls: String = Json.encode(Acl.toJsonCompatibleMap(acls))
     Assert.assertEquals(acls, Acl.fromJson(jsonAcls))
 
-    //test json by reading from a local file.
-    val path: String = Thread.currentThread().getContextClassLoader.getResource("acl.json").getPath
-    val source = scala.io.Source.fromFile(path)
-    Assert.assertEquals(acls, Acl.fromJson(source.mkString))
-    source.close()
+    Assert.assertEquals(acls, Acl.fromJson(aclJson))
   }
 
   def testEqualsAndHashCode(): Unit = {
