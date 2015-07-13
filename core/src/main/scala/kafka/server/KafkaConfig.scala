@@ -590,7 +590,7 @@ case class KafkaConfig (props: java.util.Map[_, _]) extends AbstractConfig(Kafka
   val authorizerClassName: String = getString(KafkaConfig.AuthorizerClassNameProp)
   val superUser: String = getString(KafkaConfig.SuperUserProp)
   val authorizerConfigPath: String = getString(KafkaConfig.AuthorizerConfigPathProp)
-
+  
   /** ********* Socket Server Configuration ***********/
   val hostName = getString(KafkaConfig.HostNameProp)
   val port = getInt(KafkaConfig.PortProp)
