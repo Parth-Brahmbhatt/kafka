@@ -20,16 +20,16 @@ package kafka.security.auth
 import kafka.utils.Json
 
 object Acl {
-  val wildCardPrincipal: KafkaPrincipal = new KafkaPrincipal("user", "*")
-  val wildCardHost: String = "*"
-  val allowAllAcl = new Acl(Set[KafkaPrincipal](wildCardPrincipal), PermissionType.ALLOW, Set[String](wildCardHost), Set[Operation](All))
-  val principalKey = "principals"
-  val permissionTypeKey = "permissionType"
-  val operationKey = "operations"
-  val hostsKey = "hosts"
-  val versionKey = "version"
-  val currentVersion = 1
-  val aclsKey = "acls"
+  val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal("user", "*")
+  val WildCardHost: String = "*"
+  val AllowAllAcl = new Acl(Set[KafkaPrincipal](WildCardPrincipal), Allow, Set[String](WildCardHost), Set[Operation](All))
+  val PrincipalKey = "principals"
+  val PermissionTypeKey = "permissionType"
+  val OperationKey = "operations"
+  val HostsKey = "hosts"
+  val VersionKey = "version"
+  val CurrentVersion = 1
+  val AclsKey = "acls"
 
   /**
    *
@@ -66,13 +66,13 @@ object Acl {
       case Some(m) =>
         val aclMap = m.asInstanceOf[Map[String, Any]]
         //the acl json version.
-        require(aclMap(versionKey) == currentVersion)
-        val aclSet: List[Map[String, Any]] = aclMap.get(aclsKey).get.asInstanceOf[List[Map[String, Any]]]
+        require(aclMap(VersionKey) == CurrentVersion)
+        val aclSet: List[Map[String, Any]] = aclMap.get(AclsKey).get.asInstanceOf[List[Map[String, Any]]]
         aclSet.foreach(item => {
-          val principals: List[KafkaPrincipal] = item(principalKey).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
-          val permissionType: PermissionType = PermissionType.valueOf(item(permissionTypeKey).asInstanceOf[String])
-          val operations: List[Operation] = item(operationKey).asInstanceOf[List[String]].map(operation => Operation.fromString(operation))
-          val hosts: List[String] = item(hostsKey).asInstanceOf[List[String]]
+          val principals: List[KafkaPrincipal] = item(PrincipalKey).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
+          val permissionType: PermissionType = PermissionType.fromString(item(PermissionTypeKey).asInstanceOf[String])
+          val operations: List[Operation] = item(OperationKey).asInstanceOf[List[String]].map(operation => Operation.fromString(operation))
+          val hosts: List[String] = item(HostsKey).asInstanceOf[List[String]]
           acls += new Acl(principals.toSet, permissionType, hosts.toSet, operations.toSet)
         })
       case None =>
@@ -82,7 +82,7 @@ object Acl {
 
   def toJsonCompatibleMap(acls: Set[Acl]): Map[String,Any] = {
     acls match {
-      case aclSet: Set[Acl] => Map(Acl.versionKey -> Acl.currentVersion, Acl.aclsKey -> aclSet.map(acl => acl.toMap).toList)
+      case aclSet: Set[Acl] => Map(Acl.VersionKey -> Acl.CurrentVersion, Acl.AclsKey -> aclSet.map(acl => acl.toMap).toList)
       case _ => null
     }
   }
@@ -108,10 +108,10 @@ class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType
    */
   def toMap() : Map[String, Any] = {
     val map: collection.mutable.HashMap[String, Any] = new collection.mutable.HashMap[String, Any]()
-    map.put(Acl.principalKey, principals.map(principal => principal.toString))
-    map.put(Acl.permissionTypeKey, permissionType.name())
-    map.put(Acl.operationKey, operations.map(operation => operation.name))
-    map.put(Acl.hostsKey, hosts)
+    map.put(Acl.PrincipalKey, principals.map(principal => principal.toString))
+    map.put(Acl.PermissionTypeKey, permissionType.name)
+    map.put(Acl.OperationKey, operations.map(operation => operation.name))
+    map.put(Acl.HostsKey, hosts)
 
     map.toMap
   }
@@ -136,7 +136,7 @@ class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType
   }
 
   override def toString() : String = {
-    return "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name(), operations.mkString(","), hosts.mkString(","))
+    return "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name, operations.mkString(","), hosts.mkString(","))
   }
 
 }
