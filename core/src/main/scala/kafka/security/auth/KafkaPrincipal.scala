@@ -38,9 +38,9 @@ object KafkaPrincipal {
  * @param principalType type of principal user,unixgroup, ldapgroup.
  * @param name name of the principal
  */
-class KafkaPrincipal(val principalType: String,val name: String) extends Principal {
+class KafkaPrincipal(val principalType: String, val name: String) extends Principal {
 
-  if(principalType == null || name == null)
+  if (principalType == null || name == null)
     throw new IllegalArgumentException("principalType and name can not be null")
 
   override def getName: String = {
@@ -52,10 +52,10 @@ class KafkaPrincipal(val principalType: String,val name: String) extends Princip
   }
 
   override def equals(that: Any): Boolean = {
-    if(!(that.isInstanceOf[KafkaPrincipal]))
+    if (!(that.isInstanceOf[KafkaPrincipal]))
       return false
     val other: KafkaPrincipal = that.asInstanceOf[KafkaPrincipal]
-    if(principalType.equalsIgnoreCase(other.principalType) && name.equalsIgnoreCase(other.name))
+    if (principalType.equalsIgnoreCase(other.principalType) && name.equalsIgnoreCase(other.name))
       return true
     false
   }

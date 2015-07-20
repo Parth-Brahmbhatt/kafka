@@ -14,7 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kafka.security.auth;
+package kafka.security.auth
+
+import kafka.common.KafkaException
+;
 
 /**
  * Different operations a client may perform on kafka resources.
@@ -31,17 +34,9 @@ case object ClusterAction extends Operation { val name: String = "ClusterAction"
 case object All extends Operation { val name: String = "All" }
 
 object Operation {
-   def fromString(operation: String) : Operation = {
-      operation match {
-         case operation if operation.equalsIgnoreCase(Read.name) => Read
-         case operation if operation.equalsIgnoreCase(Write.name) => Write
-         case operation if operation.equalsIgnoreCase(Create.name) => Create
-         case operation if operation.equalsIgnoreCase(Delete.name) => Delete
-         case operation if operation.equalsIgnoreCase(Alter.name) => Alter
-         case operation if operation.equalsIgnoreCase(Describe.name) => Describe
-         case operation if operation.equalsIgnoreCase(ClusterAction.name) => ClusterAction
-         case operation if operation.equalsIgnoreCase(All.name) => All
-      }
+   def fromString(operation: String): Operation = {
+      val op = values().filter(op => op.name.equalsIgnoreCase(operation)).headOption
+      op.getOrElse(throw new KafkaException(operation + " not a valid operation name. The valid names are " + values().mkString(",")))
    }
 
    def values() : List[Operation] = {

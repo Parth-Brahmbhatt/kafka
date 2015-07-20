@@ -22,9 +22,9 @@ object Resource {
   val ClusterResource: Resource = new Resource(Cluster,Resource.ClusterResourceName)
 
   def fromString(str: String) : Resource = {
-    val arr: Array[String] = str.split(Separator)
+    val arr: Array[String] = str.split(Separator, 2)
 
-    if(arr.length != 2) {
+    if (arr.length != 2) {
       throw new IllegalArgumentException("Expected a string in format ResourceType:Name but got " + str + ". Allowed resource types are" + ResourceType.values())
     }
 
@@ -38,17 +38,17 @@ object Resource {
  * @param name name of the resource, for topic this will be topic name , for group it will be group name. For cluster type
  *             it will be a constant string kafka-cluster.
  */
-class Resource(val resourceType: ResourceType,val name: String) {
+class Resource(val resourceType: ResourceType, val name: String) {
 
   override def toString: String = {
     resourceType.name + Resource.Separator + name
   }
 
   override def equals(that: Any): Boolean = {
-    if(!(that.isInstanceOf[Resource]))
+    if (!(that.isInstanceOf[Resource]))
       return false
     val other: Resource = that.asInstanceOf[Resource]
-    if(resourceType.equals(other.resourceType) && name.equalsIgnoreCase(other.name))
+    if (resourceType.equals(other.resourceType) && name.equalsIgnoreCase(other.name))
       return true
     false
   }

@@ -19,6 +19,7 @@ package kafka.security.auth
 
 import kafka.network.RequestChannel.Session
 import kafka.server.KafkaConfig
+import org.apache.kafka.common.Configurable
 
 /**
  * Top level interface that all plugable authorizer must implement. Kafka server will read "authorizer.class" config
@@ -29,11 +30,7 @@ import kafka.server.KafkaConfig
  * From that point onwards, every client request will first be routed to authorize method and the request will only be
  * authorized if the method returns true.
  */
-trait Authorizer {
-  /**
-   * Guaranteed to be called before any authorize call is made.
-   */
-  def initialize(kafkaConfig: KafkaConfig): Unit
+trait Authorizer extends Configurable {
 
   /**
    * @param session The session being authenticated.

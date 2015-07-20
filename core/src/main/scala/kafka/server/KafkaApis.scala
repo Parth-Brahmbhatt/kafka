@@ -98,9 +98,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction , Resource.ClusterResource)) {
-      throw new AuthorizationException("Request " + request + " is not authorized.")
-    }
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction , Resource.ClusterResource))
+      throw new AuthorizationException("Request " + leaderAndIsrRequest + " is not authorized.")
 
     try {
       // call replica manager to handle updating partitions to become leader or follower
@@ -134,9 +133,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource)) {
-      throw new AuthorizationException("Request " + request + " is not authorized.")
-    }
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+      throw new AuthorizationException("Request " + stopReplicaRequest + " is not authorized.")
 
     val (response, error) = replicaManager.stopReplicas(stopReplicaRequest)
     val stopReplicaResponse = new StopReplicaResponse(stopReplicaRequest.correlationId, response.toMap, error)
@@ -147,9 +145,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
     val updateMetadataRequest = request.requestObj.asInstanceOf[UpdateMetadataRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource)) {
-      throw new AuthorizationException("Request " + request + " is not authorized.")
-    }
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+      throw new AuthorizationException("Request " + updateMetadataRequest + " is not authorized.")
 
     replicaManager.maybeUpdateMetadataCache(updateMetadataRequest, metadataCache)
 
@@ -163,9 +160,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource)) {
-      throw new AuthorizationException("Request " + request + " is not authorized.")
-    }
+    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+      throw new AuthorizationException("Request " + controlledShutdownRequest + " is not authorized.")
 
     val partitionsRemaining = controller.shutdownBroker(controlledShutdownRequest.brokerId)
     val controlledShutdownResponse = new ControlledShutdownResponse(controlledShutdownRequest.correlationId,
@@ -624,7 +620,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     val topicResponses = metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol)
-    if(topicResponses.isEmpty) {
+    if (topicResponses.isEmpty) {
       if (authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
         throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to create " + ConsumerCoordinator.OffsetsTopicName)
       }
@@ -657,13 +653,17 @@ class KafkaApis(val requestChannel: RequestChannel,
       topic => (!authorizer.isDefined || authorizer.get.authorize(request.session, Read, new Resource(Topic, topic))
         && authorizer.get.authorize(request.session, Read, new Resource(ConsumerGroup, joinGroupRequest.groupId()))))
 
-    val unauthorizedTopicPartition = unauthorizedTopics.map(topic => new TopicPartition(topic, -1))
-
     // the callback for sending a join-group response
     def sendResponseCallback(partitions: Set[TopicAndPartition], consumerId: String, generationId: Int, errorCode: Short) {
-      val partitionList = (partitions.map(tp => new TopicPartition(tp.topic, tp.partition)) ++ unauthorizedTopicPartition).toBuffer
-      val error = if (errorCode == ErrorMapping.NoError && unauthorizedTopicPartition.nonEmpty) ErrorMapping.AuthorizationCode else errorCode
+      val error = if (errorCode == ErrorMapping.NoError && unauthorizedTopics.nonEmpty) ErrorMapping.AuthorizationCode else errorCode
+
+      val partitionList = if (error == ErrorMapping.NoError)
+        partitions.map(tp => new TopicPartition(tp.topic, tp.partition)).toBuffer
+      else
+        List.empty.toBuffer
+
       val responseBody = new JoinGroupResponse(error, generationId, consumerId, partitionList)
+
       trace("Sending join group response %s for correlation id %d to client %s."
               .format(responseBody, request.header.correlationId, request.header.clientId))
       requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, respHeader, responseBody)))

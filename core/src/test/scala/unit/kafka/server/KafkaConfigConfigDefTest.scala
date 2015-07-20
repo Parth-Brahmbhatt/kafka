@@ -265,8 +265,6 @@ class KafkaConfigConfigDefTest extends JUnit3Suite {
         case KafkaConfig.QueuedMaxRequestsProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number", "0")
 
         case KafkaConfig.AuthorizerClassNameProp => // ignore string
-        case KafkaConfig.SuperUserProp => //ignore string
-        case KafkaConfig.AuthorizerConfigPathProp => //ignore string
 
         case KafkaConfig.PortProp => assertPropertyInvalid(getBaseProperties(), name, "not_a_number")
         case KafkaConfig.HostNameProp => // ignore string

@@ -47,8 +47,6 @@ object Defaults {
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
-  val SuperUser = ""
-  val AuthorizerConfigPath = ""
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -166,8 +164,6 @@ object KafkaConfig {
   val QueuedMaxRequestsProp = "queued.max.requests"
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
-  val SuperUserProp = "super.users"
-  val AuthorizerConfigPathProp = "authorizer.config.path"
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -285,8 +281,6 @@ object KafkaConfig {
   val QueuedMaxRequestsDoc = "The number of queued requests allowed before blocking the network threads"
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
-  val SuperUserDoc = "Comma seperated list of users that will have super user access to the cluster and all the topics."
-  val AuthorizerConfigPathDoc = "Path to a authorizer configuration property file that will be used by the authorizer implementation."
   /** ********* Socket Server Configuration ***********/
   val PortDoc = "the port to listen and accept connections on"
   val HostNameDoc = "hostname of broker. If this is set, it will only bind to this address. If this is not set, it will bind to all interfaces"
@@ -435,8 +429,6 @@ object KafkaConfig {
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
-      .define(SuperUserProp, STRING, Defaults.SuperUser, LOW, SuperUserDoc)
-      .define(AuthorizerConfigPathProp, STRING, Defaults.AuthorizerConfigPath, LOW, AuthorizerConfigPathDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -588,8 +580,6 @@ case class KafkaConfig (props: java.util.Map[_, _]) extends AbstractConfig(Kafka
 
   /************* Authorizer Configuration ***********/
   val authorizerClassName: String = getString(KafkaConfig.AuthorizerClassNameProp)
-  val superUser: String = getString(KafkaConfig.SuperUserProp)
-  val authorizerConfigPath: String = getString(KafkaConfig.AuthorizerConfigPathProp)
 
   /** ********* Socket Server Configuration ***********/
   val hostName = getString(KafkaConfig.HostNameProp)

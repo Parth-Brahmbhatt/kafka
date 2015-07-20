@@ -20,7 +20,7 @@ package kafka.security.auth
 import kafka.utils.Json
 
 object Acl {
-  val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal("user", "*")
+  val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal(KafkaPrincipal.UserType, "*")
   val WildCardHost: String = "*"
   val AllowAllAcl = new Acl(Set[KafkaPrincipal](WildCardPrincipal), Allow, Set[String](WildCardHost), Set[Operation](All))
   val PrincipalKey = "principals"
@@ -58,7 +58,7 @@ object Acl {
    * @return
    */
   def fromJson(aclJson: String): Set[Acl] = {
-    if(aclJson == null || aclJson.isEmpty) {
+    if (aclJson == null || aclJson.isEmpty) {
       return collection.immutable.Set.empty[Acl]
     }
     var acls: collection.mutable.HashSet[Acl] = new collection.mutable.HashSet[Acl]()
@@ -67,7 +67,7 @@ object Acl {
         val aclMap = m.asInstanceOf[Map[String, Any]]
         //the acl json version.
         require(aclMap(VersionKey) == CurrentVersion)
-        val aclSet: List[Map[String, Any]] = aclMap.get(AclsKey).get.asInstanceOf[List[Map[String, Any]]]
+        val aclSet: List[Map[String, Any]] = aclMap(AclsKey).asInstanceOf[List[Map[String, Any]]]
         aclSet.foreach(item => {
           val principals: List[KafkaPrincipal] = item(PrincipalKey).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
           val permissionType: PermissionType = PermissionType.fromString(item(PermissionTypeKey).asInstanceOf[String])
@@ -80,7 +80,7 @@ object Acl {
     return acls.toSet
   }
 
-  def toJsonCompatibleMap(acls: Set[Acl]): Map[String,Any] = {
+  def toJsonCompatibleMap(acls: Set[Acl]): Map[String, Any] = {
     acls match {
       case aclSet: Set[Acl] => Map(Acl.VersionKey -> Acl.CurrentVersion, Acl.AclsKey -> aclSet.map(acl => acl.toMap).toList)
       case _ => null
@@ -98,7 +98,7 @@ object Acl {
  * @param hosts A value of * indicates all hosts.
  * @param operations A value of ALL indicates all operations.
  */
-class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType,val hosts: Set[String],val operations: Set[Operation]) {
+class Acl(val principals: Set[KafkaPrincipal], val permissionType: PermissionType, val hosts: Set[String], val operations: Set[Operation]) {
 
   /**
    * TODO: Ideally we would have a symmetric toJson method but our current json library fails to decode double parsed json strings so
@@ -106,21 +106,18 @@ class Acl(val principals: Set[KafkaPrincipal],val permissionType: PermissionType
    * Convert an acl instance to a map
    * @return Map representation of the Acl.
    */
-  def toMap() : Map[String, Any] = {
-    val map: collection.mutable.HashMap[String, Any] = new collection.mutable.HashMap[String, Any]()
-    map.put(Acl.PrincipalKey, principals.map(principal => principal.toString))
-    map.put(Acl.PermissionTypeKey, permissionType.name)
-    map.put(Acl.OperationKey, operations.map(operation => operation.name))
-    map.put(Acl.HostsKey, hosts)
-
-    map.toMap
+  def toMap(): Map[String, Any] = {
+    Map(Acl.PrincipalKey -> principals.map(principal => principal.toString),
+      Acl.PermissionTypeKey -> permissionType.name,
+      Acl.OperationKey -> operations.map(operation => operation.name),
+      Acl.HostsKey -> hosts)
   }
 
   override def equals(that: Any): Boolean = {
-    if(!(that.isInstanceOf[Acl]))
+    if (!that.isInstanceOf[Acl])
       return false
     val other = that.asInstanceOf[Acl]
-    if(permissionType.equals(other.permissionType) && operations.equals(other.operations) && principals.equals(other.principals)
+    if (permissionType.equals(other.permissionType) && operations.equals(other.operations) && principals.equals(other.principals)
       && hosts.map(host => host.toLowerCase()).equals(other.hosts.map(host=> host.toLowerCase()))) {
       return true
     }

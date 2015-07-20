@@ -164,7 +164,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
           /* Get the authorizer and initialize it if one is specified.*/
           val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
             val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
-            authZ.initialize(config)
+            authZ.configure(config.originals())
             Option(authZ)
           } else {
             None

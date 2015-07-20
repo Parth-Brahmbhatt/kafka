@@ -5,51 +5,34 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * <p/>
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * <p/>
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kafka.security.auth
+package unit.kafka.security.auth
 
 import kafka.common.KafkaException
+import kafka.security.auth.{ResourceType, Topic}
+import org.junit.Assert
+import org.scalatest.junit.JUnit3Suite
 
-;
+class ResourceTypeTest extends JUnit3Suite {
 
-/**
- * ResourceTypes.
- */
+  def testFromString(): Unit = {
+    val resourceType: ResourceType = ResourceType.fromString("Topic")
+    Assert.assertEquals(Topic, resourceType)
 
-
-sealed trait ResourceType {
-  def name: String
-}
-
-case object Cluster extends ResourceType {
-  val name: String = "Cluster"
-}
-
-case object Topic extends ResourceType {
-  val name: String = "Topic"
-}
-
-case object ConsumerGroup extends ResourceType {
-  val name: String = "ConsumerGroup"
-}
-
-
-object ResourceType {
-
-  def fromString(resourceType: String): ResourceType = {
-    val rType = values().filter(rType => rType.name.equalsIgnoreCase(resourceType)).headOption
-    rType.getOrElse(throw new KafkaException(resourceType + " not a valid resourceType name. The valid names are " + values().mkString(",")))
+    try {
+      ResourceType.fromString("badName")
+      fail("Expected exception on invalid ResourceType name.")
+    } catch {
+      case e: KafkaException => "Expected."
+    }
   }
 
-  def values() : List[ResourceType] = {
-    List(Cluster, Topic, ConsumerGroup)
-  }
 }
