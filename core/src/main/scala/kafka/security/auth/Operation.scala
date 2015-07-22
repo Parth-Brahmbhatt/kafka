@@ -40,6 +40,6 @@ object Operation {
    }
 
    def values() : List[Operation] = {
-      return List(Read, Write, Create, Delete, Alter, Describe, ClusterAction, All)
+      List(Read, Write, Create, Delete, Alter, Describe, ClusterAction, All)
    }
 }

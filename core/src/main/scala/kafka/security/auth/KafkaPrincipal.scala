@@ -25,7 +25,7 @@ object KafkaPrincipal {
   def fromString(str: String) : KafkaPrincipal = {
     val arr: Array[String] = str.split(Separator, 2) //only split in two parts
 
-    if(arr.length != 2) {
+    if (arr.length != 2) {
       throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)
     }
 
@@ -52,7 +52,7 @@ class KafkaPrincipal(val principalType: String, val name: String) extends Princi
   }
 
   override def equals(that: Any): Boolean = {
-    if (!(that.isInstanceOf[KafkaPrincipal]))
+    if (!that.isInstanceOf[KafkaPrincipal])
       return false
     val other: KafkaPrincipal = that.asInstanceOf[KafkaPrincipal]
     if (principalType.equalsIgnoreCase(other.principalType) && name.equalsIgnoreCase(other.name))

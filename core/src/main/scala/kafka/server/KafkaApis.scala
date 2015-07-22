@@ -98,7 +98,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction , Resource.ClusterResource))
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction , Resource.ClusterResource))
       throw new AuthorizationException("Request " + leaderAndIsrRequest + " is not authorized.")
 
     try {
@@ -133,7 +133,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
       throw new AuthorizationException("Request " + stopReplicaRequest + " is not authorized.")
 
     val (response, error) = replicaManager.stopReplicas(stopReplicaRequest)
@@ -145,7 +145,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
     val updateMetadataRequest = request.requestObj.asInstanceOf[UpdateMetadataRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
       throw new AuthorizationException("Request " + updateMetadataRequest + " is not authorized.")
 
     replicaManager.maybeUpdateMetadataCache(updateMetadataRequest, metadataCache)
@@ -160,7 +160,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
-    if(authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
       throw new AuthorizationException("Request " + controlledShutdownRequest + " is not authorized.")
 
     val partitionsRemaining = controller.shutdownBroker(controlledShutdownRequest.brokerId)
@@ -390,7 +390,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       val (topicAndPartition, partitionOffsetRequestInfo) = elem
       try {
         // ensure leader exists
-        val localReplica = if(!offsetRequest.isFromDebuggingClient)
+        val localReplica = if (!offsetRequest.isFromDebuggingClient)
           replicaManager.getLeaderReplicaIfLocal(topicAndPartition.topic, topicAndPartition.partition)
         else
           replicaManager.getReplicaOrException(topicAndPartition.topic, topicAndPartition.partition)
@@ -447,14 +447,14 @@ class KafkaApis(val requestChannel: RequestChannel,
   private def fetchOffsetsBefore(log: Log, timestamp: Long, maxNumOffsets: Int): Seq[Long] = {
     val segsArray = log.logSegments.toArray
     var offsetTimeArray: Array[(Long, Long)] = null
-    if(segsArray.last.size > 0)
+    if (segsArray.last.size > 0)
       offsetTimeArray = new Array[(Long, Long)](segsArray.length + 1)
     else
       offsetTimeArray = new Array[(Long, Long)](segsArray.length)
 
     for(i <- 0 until segsArray.length)
       offsetTimeArray(i) = (segsArray(i).baseOffset, segsArray(i).lastModified)
-    if(segsArray.last.size > 0)
+    if (segsArray.last.size > 0)
       offsetTimeArray(segsArray.length) = (log.logEndOffset, SystemTime.milliseconds)
 
     var startIndex = -1
@@ -536,7 +536,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     var (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Describe, new Resource(Topic, topic)))
 
     val topicResponses = metadataCache.getTopicMetadata(authorizedTopics, request.securityProtocol)
-    if(config.autoCreateTopicsEnable && topicResponses.size != authorizedTopics.size) {
+    if (config.autoCreateTopicsEnable && topicResponses.size != authorizedTopics.size) {
       val nonExistentTopics: Set[String] = topics -- topicResponses.map(_.topic).toSet
       if (authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
         authorizedTopics --= nonExistentTopics
@@ -620,10 +620,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     val topicResponses = metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol)
-    if (topicResponses.isEmpty) {
-      if (authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
+    if (topicResponses.isEmpty && authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
         throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to create " + ConsumerCoordinator.OffsetsTopicName)
-      }
     }
 
     //get metadata (and create the topic if necessary)

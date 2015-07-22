@@ -77,13 +77,13 @@ object Acl {
         })
       case None =>
     }
-    return acls.toSet
+    acls.toSet
   }
 
   def toJsonCompatibleMap(acls: Set[Acl]): Map[String, Any] = {
     acls match {
       case aclSet: Set[Acl] => Map(Acl.VersionKey -> Acl.CurrentVersion, Acl.AclsKey -> aclSet.map(acl => acl.toMap).toList)
-      case _ => null
+      case _ => Map.empty[String, Any]
     }
   }
 }
@@ -133,7 +133,7 @@ class Acl(val principals: Set[KafkaPrincipal], val permissionType: PermissionTyp
   }
 
   override def toString() : String = {
-    return "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name, operations.mkString(","), hosts.mkString(","))
+    "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name, operations.mkString(","), hosts.mkString(","))
   }
 
 }

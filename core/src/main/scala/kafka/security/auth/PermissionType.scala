@@ -18,8 +18,6 @@ package kafka.security.auth
 
 import kafka.common.KafkaException
 
-;
-
 /**
  * PermissionType.
  */
@@ -44,7 +42,7 @@ object PermissionType {
   }
 
   def values() : List[PermissionType] = {
-    return List(Allow, Deny)
+    List(Allow, Deny)
   }
 }
 
