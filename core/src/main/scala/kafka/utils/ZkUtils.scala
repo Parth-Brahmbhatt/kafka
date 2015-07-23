@@ -60,23 +60,22 @@ object ZkUtils extends Logging {
 
   val isSecure: Boolean = {
     val loginConfigurationFile: String = System.getProperty("java.security.auth.login.config")
-    var isSecure: Boolean = false
-    if ((loginConfigurationFile != null) && (loginConfigurationFile.length > 0)) {
+    if (loginConfigurationFile != null && loginConfigurationFile.length > 0) {
       val config_file: File = new File(loginConfigurationFile)
       if (!config_file.canRead) {
-        throw new RuntimeException("File " + loginConfigurationFile + " cannot be read.")
+        throw new KafkaException("File " + loginConfigurationFile + " cannot be read.")
       }
       try {
         val config_uri: URI = config_file.toURI
         val login_conf = Configuration.getInstance("JavaLoginConfig", new URIParameter(config_uri))
-        isSecure = login_conf.getAppConfigurationEntry("Client") != null
+        login_conf.getAppConfigurationEntry("Client") != null
       } catch {
         case ex: Exception => {
-          throw new RuntimeException(ex)
+          throw new KafkaException(ex)
         }
       }
     }
-    isSecure
+    false
   }
 
   val DefaultAcls: List[ACL] = if (isSecure) {
@@ -132,9 +131,8 @@ object ZkUtils extends Logging {
 
   def setupCommonPaths(zkClient: ZkClient) {
     for(path <- Seq(ConsumersPath, BrokerIdsPath, BrokerTopicsPath, TopicConfigChangesPath, TopicConfigPath,
-      DeleteTopicsPath, BrokerSequenceIdPath)) {
+      DeleteTopicsPath, BrokerSequenceIdPath))
       makeSurePersistentPathExists(zkClient, path)
-    }
   }
 
   def getLeaderForPartition(zkClient: ZkClient, topic: String, partition: Int): Option[Int] = {
@@ -274,9 +272,7 @@ object ZkUtils extends Logging {
     val acl = if(path == null || path.isEmpty || path.equals(ConsumersPath)) {
       import scala.collection.JavaConversions._
       ZooDefs.Ids.OPEN_ACL_UNSAFE.toList
-    } else {
-      acls
-    }
+    } else acls
 
     if (!client.exists(path))
       ZkPath.createPersistent(client, path, true, acl) //won't throw NoNodeException or NodeExistsException
