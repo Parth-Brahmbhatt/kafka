@@ -58,9 +58,9 @@ object Acl {
    * @return
    */
   def fromJson(aclJson: String): Set[Acl] = {
-    if (aclJson == null || aclJson.isEmpty) {
+    if (aclJson == null || aclJson.isEmpty)
       return collection.immutable.Set.empty[Acl]
-    }
+
     var acls: collection.mutable.HashSet[Acl] = new collection.mutable.HashSet[Acl]()
     Json.parseFull(aclJson) match {
       case Some(m) =>
@@ -98,7 +98,7 @@ object Acl {
  * @param hosts A value of * indicates all hosts.
  * @param operations A value of ALL indicates all operations.
  */
-class Acl(val principals: Set[KafkaPrincipal], val permissionType: PermissionType, val hosts: Set[String], val operations: Set[Operation]) {
+case class Acl(principals: Set[KafkaPrincipal], permissionType: PermissionType, hosts: Set[String], operations: Set[Operation]) {
 
   /**
    * TODO: Ideally we would have a symmetric toJson method but our current json library fails to decode double parsed json strings so
@@ -111,25 +111,6 @@ class Acl(val principals: Set[KafkaPrincipal], val permissionType: PermissionTyp
       Acl.PermissionTypeKey -> permissionType.name,
       Acl.OperationKey -> operations.map(operation => operation.name),
       Acl.HostsKey -> hosts)
-  }
-
-  override def equals(that: Any): Boolean = {
-    if (!that.isInstanceOf[Acl])
-      return false
-    val other = that.asInstanceOf[Acl]
-    if (permissionType.equals(other.permissionType) && operations.equals(other.operations) && principals.equals(other.principals)
-      && hosts.map(host => host.toLowerCase()).equals(other.hosts.map(host=> host.toLowerCase()))) {
-      return true
-    }
-    false
-  }
-
-
-  override def hashCode(): Int = {
-    31 +
-    principals.foldLeft(0)((r: Int, c: KafkaPrincipal) => r + c.hashCode()) +
-    operations.foldLeft(0)((r: Int, c: Operation) => r + c.hashCode()) +
-    hosts.foldLeft(0)((r: Int, c: String) => r + c.toLowerCase().hashCode())
   }
 
   override def toString() : String = {

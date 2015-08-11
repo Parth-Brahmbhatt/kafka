@@ -19,17 +19,14 @@ package kafka.security.auth
 import java.security.Principal
 
 object KafkaPrincipal {
-  val Separator: String = ":"
-  val UserType: String = "User"
+  val Separator = ":"
+  val UserType = "User"
 
   def fromString(str: String) : KafkaPrincipal = {
-    val arr: Array[String] = str.split(Separator, 2) //only split in two parts
-
-    if (arr.length != 2) {
-      throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)
+    str.split(Separator, 2) match {
+      case Array(principalType, name, _*) => new KafkaPrincipal(principalType, name)
+      case s => throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)
     }
-
-    new KafkaPrincipal(arr(0), arr(1))
   }
 }
 
@@ -38,7 +35,7 @@ object KafkaPrincipal {
  * @param principalType type of principal user,unixgroup, ldapgroup.
  * @param name name of the principal
  */
-class KafkaPrincipal(val principalType: String, val name: String) extends Principal {
+case class KafkaPrincipal(val principalType: String, val name: String) extends Principal {
 
   if (principalType == null || name == null)
     throw new IllegalArgumentException("principalType and name can not be null")
@@ -49,19 +46,6 @@ class KafkaPrincipal(val principalType: String, val name: String) extends Princi
 
   override def toString: String = {
     principalType + KafkaPrincipal.Separator + name
-  }
-
-  override def equals(that: Any): Boolean = {
-    if (!that.isInstanceOf[KafkaPrincipal])
-      return false
-    val other: KafkaPrincipal = that.asInstanceOf[KafkaPrincipal]
-    if (principalType.equalsIgnoreCase(other.principalType) && name.equalsIgnoreCase(other.name))
-      return true
-    false
-  }
-
-  override def hashCode(): Int = {
-    31 + principalType.toLowerCase.hashCode + name.toLowerCase.hashCode
   }
 }
 

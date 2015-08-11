@@ -21,5 +21,4 @@ package kafka.common
  * @param message
  */
 class AuthorizationException(message: String) extends RuntimeException(message) {
-  def this() = this(null)
 }

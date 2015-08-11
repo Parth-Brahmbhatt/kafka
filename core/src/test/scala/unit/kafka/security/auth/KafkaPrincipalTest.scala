@@ -22,28 +22,9 @@ import org.scalatest.junit.JUnit3Suite
 
 class KafkaPrincipalTest extends JUnit3Suite   {
 
-  def testEqualsAndHashCode(): Unit = {
-    //check equals is not sensitive to case.
-    val principal1:KafkaPrincipal = KafkaPrincipal.fromString("user:test")
-    val principal2:KafkaPrincipal = KafkaPrincipal.fromString("USER:TEST")
-
-    Assert.assertEquals(principal1, principal2)
-    Assert.assertEquals(principal1.hashCode(), principal2.hashCode())
-
-    //if name does not match returns false
-    val principal3:KafkaPrincipal = KafkaPrincipal.fromString("user:test")
-    val principal4:KafkaPrincipal = KafkaPrincipal.fromString("user:test1")
-    Assert.assertFalse(principal3.equals(principal4))
-
-    //if type does not match return false
-    val principal5:KafkaPrincipal = KafkaPrincipal.fromString("user:test")
-    val principal6:KafkaPrincipal = KafkaPrincipal.fromString("group:test")
-    Assert.assertFalse(principal5.equals(principal6))
-  }
-
   def testPrincipalNameCanContainSeparator: Unit = {
-    val principalType: String = "user"
-    val name: String = "name:with:" + KafkaPrincipal.Separator + ":in:it"
+    val principalType = "user"
+    val name = "name:with:" + KafkaPrincipal.Separator + ":in:it"
 
     val principal = KafkaPrincipal.fromString(principalType + KafkaPrincipal.Separator + name)
     Assert.assertEquals(principalType, principal.principalType)

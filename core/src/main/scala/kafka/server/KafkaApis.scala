@@ -98,7 +98,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction , Resource.ClusterResource))
+    if( authorizer map (az => az.authorize(request.session, ClusterAction , Resource.ClusterResource)) getOrElse(false))
       throw new AuthorizationException("Request " + leaderAndIsrRequest + " is not authorized.")
 
     try {
@@ -133,7 +133,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if( authorizer map (az => az.authorize(request.session, ClusterAction , Resource.ClusterResource)) getOrElse(false))
       throw new AuthorizationException("Request " + stopReplicaRequest + " is not authorized.")
 
     val (response, error) = replicaManager.stopReplicas(stopReplicaRequest)
@@ -145,7 +145,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
     val updateMetadataRequest = request.requestObj.asInstanceOf[UpdateMetadataRequest]
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if( authorizer map (az => az.authorize(request.session, ClusterAction , Resource.ClusterResource)) getOrElse(false))
       throw new AuthorizationException("Request " + updateMetadataRequest + " is not authorized.")
 
     replicaManager.maybeUpdateMetadataCache(updateMetadataRequest, metadataCache)
@@ -160,7 +160,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, ClusterAction, Resource.ClusterResource))
+    if( authorizer map (az => az.authorize(request.session, ClusterAction , Resource.ClusterResource)) getOrElse(false))
       throw new AuthorizationException("Request " + controlledShutdownRequest + " is not authorized.")
 
     val partitionsRemaining = controller.shutdownBroker(controlledShutdownRequest.brokerId)
@@ -182,9 +182,12 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
     val filteredRequestInfo = (offsetCommitRequest.requestInfo -- invalidRequestsInfo.keys)
 
-    val (authorizedRequestInfo, unauthorizedRequestInfo) =  filteredRequestInfo.partition(
-      mapEntry => !authorizer.isDefined || (authorizer.get.authorize(request.session, Read, new Resource(Topic, mapEntry._1.topic)) &&
-        authorizer.get.authorize(request.session, Read, new Resource(ConsumerGroup, offsetCommitRequest.groupId))))
+    val (authorizedRequestInfo, unauthorizedRequestInfo) =  filteredRequestInfo.partition {
+      case(topicAndPartition, offsetMetadata) => authorizer map {
+        az => az.authorize(request.session, Read, new Resource(Topic, topicAndPartition.topic)) &&
+          az.authorize(request.session, Read, new Resource(ConsumerGroup, offsetCommitRequest.groupId))
+      } getOrElse(true)
+    }
 
     // the callback for sending an offset commit response
     def sendResponseCallback(commitStatus: immutable.Map[TopicAndPartition, Short]) {
@@ -276,8 +279,10 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleProducerRequest(request: RequestChannel.Request) {
     val produceRequest = request.requestObj.asInstanceOf[ProducerRequest]
 
-    val (authorizedRequestInfo, unauthorizedRequestInfo) =  produceRequest.data.partition {
-      case (topicAndPartition, _) => !authorizer.isDefined || authorizer.get.authorize(request.session, Write, new Resource(Topic ,topicAndPartition.topic))
+    val (authorizedRequestInfo, unauthorizedRequestInfo) =  produceRequest.data.partition  {
+      case(topicAndPartition, _) => authorizer map {
+        az => az.authorize(request.session, Write, new Resource(Topic ,topicAndPartition.topic))
+      } getOrElse(true)
     }
 
     // the callback for sending a produce response
@@ -338,7 +343,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     val fetchRequest = request.requestObj.asInstanceOf[FetchRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  fetchRequest.requestInfo.partition {
-      case (topicAndPartition, _) => !authorizer.isDefined || authorizer.get.authorize(request.session, Read, new Resource(Topic, topicAndPartition.topic))
+      case(topicAndPartition, _) => authorizer map {
+        az => az.authorize(request.session, Read, new Resource(Topic, topicAndPartition.topic))
+      } getOrElse(true)
     }
 
     val unauthorizedResponseStatus = unauthorizedRequestInfo.mapValues(_ => FetchResponsePartitionData(ErrorMapping.AuthorizationCode, -1, MessageSet.Empty))
@@ -380,8 +387,10 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleOffsetRequest(request: RequestChannel.Request) {
     val offsetRequest = request.requestObj.asInstanceOf[OffsetRequest]
 
-    val (authorizedRequestInfo, unauthorizedRequestInfo) = offsetRequest.requestInfo.partition {
-      case (topicAndPartition, _) => !authorizer.isDefined || authorizer.get.authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic))
+    val (authorizedRequestInfo, unauthorizedRequestInfo) = offsetRequest.requestInfo.partition  {
+      case(topicAndPartition, _) => authorizer map {
+        az => az.authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic))
+      } getOrElse(true)
     }
 
     val unauthorizedResponseStatus = unauthorizedRequestInfo.mapValues(_ => PartitionOffsetsResponse(ErrorMapping.AuthorizationCode, Nil))
@@ -533,14 +542,18 @@ class KafkaApis(val requestChannel: RequestChannel,
     val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataRequest]
     val topics = metadataRequest.topics.toSet
 
-    var (authorizedTopics, unauthorizedTopics) =  topics.partition(topic => !authorizer.isDefined || authorizer.get.authorize(request.session, Describe, new Resource(Topic, topic)))
+    var (authorizedTopics, unauthorizedTopics) = topics.partition(topic => authorizer map {
+      a => a.authorize(request.session, Describe, new Resource(Topic, topic))
+    } getOrElse (true))
 
     val topicResponses = metadataCache.getTopicMetadata(authorizedTopics, request.securityProtocol)
     if (config.autoCreateTopicsEnable && topicResponses.size != authorizedTopics.size) {
       val nonExistentTopics: Set[String] = topics -- topicResponses.map(_.topic).toSet
-      if (authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
-        authorizedTopics --= nonExistentTopics
-        unauthorizedTopics ++= nonExistentTopics
+      authorizer.foreach {
+        az => if (az.authorize(request.session, Create, Resource.ClusterResource)) {
+          authorizedTopics --= nonExistentTopics
+          unauthorizedTopics ++= nonExistentTopics
+        }
       }
     }
 
@@ -560,9 +573,12 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleOffsetFetchRequest(request: RequestChannel.Request) {
     val offsetFetchRequest = request.requestObj.asInstanceOf[OffsetFetchRequest]
 
-    val (authorizedTopicPartitions, unauthorizedTopicPartitions) =  offsetFetchRequest.requestInfo.partition(
-      topicAndPartition => !authorizer.isDefined || (authorizer.get.authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic))
-      && authorizer.get.authorize(request.session, Read, new Resource(ConsumerGroup, offsetFetchRequest.groupId))))
+    val (authorizedTopicPartitions, unauthorizedTopicPartitions) = offsetFetchRequest.requestInfo.partition(
+      topicAndPartition => authorizer map {
+        az => az.authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic)) &&
+          az.authorize(request.session, Read, new Resource(ConsumerGroup, offsetFetchRequest.groupId))
+      } getOrElse(true)
+    )
 
     val authorizationError = OffsetMetadataAndError(OffsetMetadata.InvalidOffsetMetadata, ErrorMapping.AuthorizationCode)
     val unauthorizedStatus = unauthorizedTopicPartitions.map(topicAndPartition => (topicAndPartition, authorizationError)).toMap
@@ -615,14 +631,13 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     val partition = coordinator.partitionFor(consumerMetadataRequest.group)
 
-    if (authorizer.isDefined && !authorizer.get.authorize(request.session, Read, new Resource(ConsumerGroup, consumerMetadataRequest.group))) {
-      throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to read from consumer group" + consumerMetadataRequest.group )
-    }
+    if (authorizer map  (az => az.authorize(request.session, Read, new Resource(ConsumerGroup, consumerMetadataRequest.group))) getOrElse(false))
+      throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to read from consumer group" + consumerMetadataRequest.group)
 
     val topicResponses = metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol)
-    if (topicResponses.isEmpty && authorizer.isDefined && !authorizer.get.authorize(request.session, Create, Resource.ClusterResource)) {
+
+    if (topicResponses.isEmpty && (authorizer map (_.authorize(request.session, Create, Resource.ClusterResource)) getOrElse(false)))
         throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to create " + ConsumerCoordinator.OffsetsTopicName)
-    }
 
     //get metadata (and create the topic if necessary)
     val offsetsTopicMetadata = getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol).head
@@ -647,9 +662,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
     val respHeader = new ResponseHeader(request.header.correlationId)
 
-    val (authorizedTopics, unauthorizedTopics) =  joinGroupRequest.topics().partition(
-      topic => (!authorizer.isDefined || authorizer.get.authorize(request.session, Read, new Resource(Topic, topic))
-        && authorizer.get.authorize(request.session, Read, new Resource(ConsumerGroup, joinGroupRequest.groupId()))))
+    val (authorizedTopics, unauthorizedTopics) = joinGroupRequest.topics().partition(
+      topic => authorizer map {
+        az => az.authorize(request.session, Read, new Resource(Topic, topic)) &&
+          az.authorize(request.session, Read, new Resource(ConsumerGroup, joinGroupRequest.groupId()))
+      } getOrElse (true))
 
     // the callback for sending a join-group response
     def sendResponseCallback(partitions: Set[TopicAndPartition], consumerId: String, generationId: Int, errorCode: Short) {

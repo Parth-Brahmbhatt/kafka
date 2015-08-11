@@ -24,7 +24,7 @@ import org.scalatest.junit.JUnit3Suite
 class ResourceTypeTest extends JUnit3Suite {
 
   def testFromString(): Unit = {
-    val resourceType: ResourceType = ResourceType.fromString("Topic")
+    val resourceType = ResourceType.fromString("Topic")
     Assert.assertEquals(Topic, resourceType)
 
     try {

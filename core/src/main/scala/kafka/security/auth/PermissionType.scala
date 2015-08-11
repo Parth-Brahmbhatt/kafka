@@ -28,21 +28,19 @@ sealed trait PermissionType {
 }
 
 case object Allow extends PermissionType {
-  val name: String = "Allow"
+  val name = "Allow"
 }
 
 case object Deny extends PermissionType {
-  val name: String = "Deny"
+  val name = "Deny"
 }
 
 object PermissionType {
   def fromString(permissionType: String): PermissionType = {
-    val pType = values().filter(pType => pType.name.equalsIgnoreCase(permissionType)).headOption
-    pType.getOrElse(throw new KafkaException(permissionType + " not a valid permissionType name. The valid names are " + values().mkString(",")))
+    val pType = values.find(pType => pType.name.equalsIgnoreCase(permissionType))
+    pType.getOrElse(throw new KafkaException(permissionType + " not a valid permissionType name. The valid names are " + values.mkString(",")))
   }
 
-  def values() : List[PermissionType] = {
-    List(Allow, Deny)
-  }
+  def values = List(Allow, Deny)
 }
 

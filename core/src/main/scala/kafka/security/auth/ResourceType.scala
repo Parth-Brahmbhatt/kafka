@@ -30,26 +30,24 @@ sealed trait ResourceType {
 }
 
 case object Cluster extends ResourceType {
-  val name: String = "Cluster"
+  val name = "Cluster"
 }
 
 case object Topic extends ResourceType {
-  val name: String = "Topic"
+  val name = "Topic"
 }
 
 case object ConsumerGroup extends ResourceType {
-  val name: String = "ConsumerGroup"
+  val name = "ConsumerGroup"
 }
 
 
 object ResourceType {
 
   def fromString(resourceType: String): ResourceType = {
-    val rType = values().filter(rType => rType.name.equalsIgnoreCase(resourceType)).headOption
-    rType.getOrElse(throw new KafkaException(resourceType + " not a valid resourceType name. The valid names are " + values().mkString(",")))
+    val rType = values.find(rType => rType.name.equalsIgnoreCase(resourceType))
+    rType.getOrElse(throw new KafkaException(resourceType + " not a valid resourceType name. The valid names are " + values.mkString(",")))
   }
 
-  def values() : List[ResourceType] = {
-    List(Cluster, Topic, ConsumerGroup)
-  }
+  def values = List(Cluster, Topic, ConsumerGroup)
 }

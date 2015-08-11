@@ -24,7 +24,7 @@ import org.scalatest.junit.JUnit3Suite
 class OperationTest extends JUnit3Suite {
 
   def testFromString(): Unit = {
-    val op: Operation = Operation.fromString("READ")
+    val op = Operation.fromString("READ")
     Assert.assertEquals(Read, op)
 
     try {
