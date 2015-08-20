@@ -81,10 +81,7 @@ object Acl {
   }
 
   def toJsonCompatibleMap(acls: Set[Acl]): Map[String, Any] = {
-    acls match {
-      case aclSet: Set[Acl] => Map(Acl.VersionKey -> Acl.CurrentVersion, Acl.AclsKey -> aclSet.map(acl => acl.toMap).toList)
-      case _ => Map.empty[String, Any]
-    }
+    Map(Acl.VersionKey -> Acl.CurrentVersion, Acl.AclsKey -> acls.map(acl => acl.toMap).toList)
   }
 }
 

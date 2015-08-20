@@ -18,8 +18,6 @@ package kafka.security.auth
 
 import kafka.common.KafkaException
 
-;
-
 /**
  * ResourceTypes.
  */
