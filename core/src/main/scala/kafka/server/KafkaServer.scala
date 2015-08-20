@@ -17,28 +17,63 @@
 
 package kafka.server
 
-import java.io.File
 import java.util
-import java.util.concurrent._
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
-import com.yammer.metrics.core.Gauge
 import kafka.admin._
-import kafka.api.{ControlledShutdownRequest, ControlledShutdownResponse}
-import kafka.cluster.{Broker, EndPoint}
-import kafka.common.{ErrorMapping, GenerateBrokerIdException, InconsistentBrokerIdException}
-import kafka.controller.{ControllerStats, KafkaController}
-import kafka.coordinator.ConsumerCoordinator
-import kafka.log.{CleanerConfig, LogConfig, LogManager}
-import kafka.metrics.KafkaMetricsGroup
-import kafka.network.{BlockingChannel, SocketServer}
+import kafka.log.LogConfig
+import kafka.log.CleanerConfig
+import kafka.log.LogManager
+import java.util.concurrent._
+import atomic.{AtomicInteger, AtomicBoolean}
+import java.io.File
+
 import kafka.security.auth.Authorizer
 import kafka.utils._
-import org.I0Itec.zkclient.ZkClient
-import org.apache.kafka.common.metrics.{JmxReporter, Metrics, _}
+import org.apache.kafka.common.metrics._
 import org.apache.kafka.common.network.NetworkReceive
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.metrics.{JmxReporter, Metrics}
 
 import scala.collection.mutable
+import org.I0Itec.zkclient.ZkClient
+import kafka.controller.{ControllerStats, KafkaController}
+import kafka.cluster.{EndPoint, Broker}
+import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
+import kafka.common.{ErrorMapping, InconsistentBrokerIdException, GenerateBrokerIdException}
+import kafka.network.{BlockingChannel, SocketServer}
+import kafka.metrics.KafkaMetricsGroup
+import com.yammer.metrics.core.Gauge
+import kafka.coordinator.{GroupManagerConfig, ConsumerCoordinator}
+
+
+object KafkaServer {
+  // Copy the subset of properties that are relevant to Logs
+  // I'm listing out individual properties here since the names are slightly different in each Config class...
+  def copyKafkaConfigToLog(kafkaConfig: KafkaConfig): java.util.Map[String, Object] = {
+    val logProps = new util.HashMap[String, Object]()
+    logProps.put(LogConfig.SegmentBytesProp, kafkaConfig.logSegmentBytes)
+    logProps.put(LogConfig.SegmentMsProp, kafkaConfig.logRollTimeMillis)
+    logProps.put(LogConfig.SegmentJitterMsProp, kafkaConfig.logRollTimeJitterMillis)
+    logProps.put(LogConfig.SegmentIndexBytesProp, kafkaConfig.logIndexSizeMaxBytes)
+    logProps.put(LogConfig.FlushMessagesProp, kafkaConfig.logFlushIntervalMessages)
+    logProps.put(LogConfig.FlushMsProp, kafkaConfig.logFlushIntervalMs)
+    logProps.put(LogConfig.RetentionBytesProp, kafkaConfig.logRetentionBytes)
+    logProps.put(LogConfig.RetentionMsProp, kafkaConfig.logRetentionTimeMillis: java.lang.Long)
+    logProps.put(LogConfig.MaxMessageBytesProp, kafkaConfig.messageMaxBytes)
+    logProps.put(LogConfig.IndexIntervalBytesProp, kafkaConfig.logIndexIntervalBytes)
+    logProps.put(LogConfig.DeleteRetentionMsProp, kafkaConfig.logCleanerDeleteRetentionMs)
+    logProps.put(LogConfig.FileDeleteDelayMsProp, kafkaConfig.logDeleteDelayMs)
+    logProps.put(LogConfig.MinCleanableDirtyRatioProp, kafkaConfig.logCleanerMinCleanRatio)
+    logProps.put(LogConfig.CleanupPolicyProp, kafkaConfig.logCleanupPolicy)
+    logProps.put(LogConfig.MinInSyncReplicasProp, kafkaConfig.minInSyncReplicas)
+    logProps.put(LogConfig.CompressionTypeProp, kafkaConfig.compressionType)
+    logProps.put(LogConfig.UncleanLeaderElectionEnableProp, kafkaConfig.uncleanLeaderElectionEnable)
+    logProps.put(LogConfig.PreAllocateEnableProp, kafkaConfig.logPreAllocateEnable)
+    logProps
+  }
+}
+
+
 
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
@@ -51,18 +86,19 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   private var shutdownLatch = new CountDownLatch(1)
 
-  private val metricConfig: MetricConfig = new MetricConfig()
-          .samples(config.metricNumSamples)
-          .timeWindow(config.metricSampleWindowMs, TimeUnit.MILLISECONDS)
   private val jmxPrefix: String = "kafka.server"
   private val reporters: java.util.List[MetricsReporter] =  config.metricReporterClasses
   reporters.add(new JmxReporter(jmxPrefix))
 
+  // This exists because the Metrics package from clients has its own Time implementation.
+  // SocketServer/Quotas (which uses client libraries) have to use the client Time objects without having to convert all of Kafka to use them
+  // Eventually, we want to merge the Time objects in core and clients
+  private val kafkaMetricsTime: org.apache.kafka.common.utils.Time = new org.apache.kafka.common.utils.SystemTime()
+  var metrics: Metrics = null
 
-
-  // This exists so SocketServer (which uses Client libraries) can use the client Time objects without having to convert all of Kafka to use them
-  // Once we get rid of kafka.utils.time, we can get rid of this too
-  private val socketServerTime: org.apache.kafka.common.utils.Time = new org.apache.kafka.common.utils.SystemTime()
+  private val metricConfig: MetricConfig = new MetricConfig()
+    .samples(config.metricNumSamples)
+    .timeWindow(config.metricSampleWindowMs, TimeUnit.MILLISECONDS)
 
   val brokerState: BrokerState = new BrokerState
 
@@ -76,7 +112,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   var dynamicConfigHandlers: Map[String, ConfigHandler] = null
   var dynamicConfigManager: DynamicConfigManager = null
-  val metrics: Metrics = new Metrics()
 
   var consumerCoordinator: ConsumerCoordinator = null
 
@@ -115,6 +150,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       val canStartup = isStartingUp.compareAndSet(false, true)
       if (canStartup) {
+        metrics = new Metrics(metricConfig, reporters, kafkaMetricsTime)
+
         brokerState.newState(Starting)
 
         /* start scheduler */
@@ -131,78 +168,61 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         config.brokerId =  getBrokerId
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
 
-        val metrics = new Metrics(metricConfig, reporters, socketServerTime)
+        socketServer = new SocketServer(config, metrics, kafkaMetricsTime)
+        socketServer.startup()
 
+        /* start replica manager */
+        replicaManager = new ReplicaManager(config, time, zkClient, kafkaScheduler, logManager, isShuttingDown)
+        replicaManager.startup()
 
-        socketServer = new SocketServer(config.brokerId,
-                                        config.listeners,
-                                        config.numNetworkThreads,
-                                        config.queuedMaxRequests,
-                                        config.socketSendBufferBytes,
-                                        config.socketReceiveBufferBytes,
-                                        config.socketRequestMaxBytes,
-                                        config.maxConnectionsPerIp,
-                                        config.connectionsMaxIdleMs,
-                                        config.maxConnectionsPerIpOverrides,
-                                        socketServerTime,
-                                        metrics)
-          socketServer.startup()
+        /* start kafka controller */
+        kafkaController = new KafkaController(config, zkClient, brokerState)
+        kafkaController.startup()
 
-          /* start replica manager */
-          replicaManager = new ReplicaManager(config, time, zkClient, kafkaScheduler, logManager, isShuttingDown)
-          replicaManager.startup()
+        /* start kafka coordinator */
+        consumerCoordinator = ConsumerCoordinator.create(config, zkClient, replicaManager, kafkaScheduler)
+        consumerCoordinator.startup()
 
-          /* start kafka controller */
-          kafkaController = new KafkaController(config, zkClient, brokerState)
-          kafkaController.startup()
+        /* Get the authorizer and initialize it if one is specified.*/
+        val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
+          val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
+          authZ.configure(config.originals())
+          Option(authZ)
+        } else {
+          None
+        }
 
-          /* start kafka coordinator */
-          consumerCoordinator = ConsumerCoordinator.create(config, zkClient, replicaManager, kafkaScheduler)
-          consumerCoordinator.startup()
+        /* start processing requests */
+        apis = new KafkaApis(socketServer.requestChannel, replicaManager, consumerCoordinator,
+          kafkaController, zkClient, config.brokerId, config, metadataCache, metrics, authorizer)
+        requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
+        brokerState.newState(RunningAsBroker)
 
+        Mx4jLoader.maybeLoad()
 
-          /* Get the authorizer and initialize it if one is specified.*/
-          val authorizer: Option[Authorizer] = if(config.authorizerClassName != null && !config.authorizerClassName.isEmpty) {
-            val authZ: Authorizer = CoreUtils.createObject(config.authorizerClassName)
-            authZ.configure(config.originals())
-            Option(authZ)
-          } else {
-            None
-          }
+        /* start dynamic config manager */
+        dynamicConfigHandlers = Map[String, ConfigHandler](ConfigType.Topic -> new TopicConfigHandler(logManager),
+                                                           ConfigType.Client -> new ClientIdConfigHandler)
+        dynamicConfigManager = new DynamicConfigManager(zkClient, dynamicConfigHandlers)
+        dynamicConfigManager.startup()
 
-          /* start processing requests */
-          apis = new KafkaApis(socketServer.requestChannel, replicaManager, consumerCoordinator,
-            kafkaController, zkClient, config.brokerId, config, metadataCache, authorizer)
+        /* tell everyone we are alive */
+        val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
+          if (endpoint.port == 0)
+            (protocol, EndPoint(endpoint.host, socketServer.boundPort(protocol), endpoint.protocolType))
+          else
+            (protocol, endpoint)
+        }
+        kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
+        kafkaHealthcheck.startup()
 
+        /* register broker metrics */
+        registerStats()
 
-          requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
-          brokerState.newState(RunningAsBroker)
-
-          Mx4jLoader.maybeLoad()
-
-          /* start dynamic config manager */
-          dynamicConfigHandlers = Map[String, ConfigHandler](ConfigType.Topic -> new TopicConfigHandler(logManager),
-                                                             ConfigType.Client -> new ClientIdConfigHandler)
-          dynamicConfigManager = new DynamicConfigManager(zkClient, dynamicConfigHandlers)
-          dynamicConfigManager.startup()
-
-          /* tell everyone we are alive */
-          val listeners = config.advertisedListeners.map {case(protocol, endpoint) =>
-            if (endpoint.port == 0)
-              (protocol, EndPoint(endpoint.host, socketServer.boundPort(), endpoint.protocolType))
-            else
-              (protocol, endpoint)
-          }
-          kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, config.zkSessionTimeoutMs, zkClient)
-          kafkaHealthcheck.startup()
-
-          /* register broker metrics */
-          registerStats()
-
-          shutdownLatch = new CountDownLatch(1)
-          startupComplete.set(true)
-          isStartingUp.set(false)
-          info("started")
+        shutdownLatch = new CountDownLatch(1)
+        startupComplete.set(true)
+        isStartingUp.set(false)
+        info("started")
       }
     }
     catch {
@@ -368,6 +388,8 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
           CoreUtils.swallow(kafkaController.shutdown())
         if(zkClient != null)
           CoreUtils.swallow(zkClient.close())
+        if (metrics != null)
+          CoreUtils.swallow(metrics.close())
 
         brokerState.newState(NotRunning)
 
@@ -392,10 +414,10 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
   def getLogManager(): LogManager = logManager
 
-  def boundPort(): Int = socketServer.boundPort()
+  def boundPort(protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): Int = socketServer.boundPort(protocol)
 
   private def createLogManager(zkClient: ZkClient, brokerState: BrokerState): LogManager = {
-    val defaultProps = copyKafkaConfigToLog(config.originals)
+    val defaultProps = KafkaServer.copyKafkaConfigToLog(config)
     val defaultLogConfig = LogConfig(defaultProps)
 
     val configs = AdminUtils.fetchAllTopicConfigs(zkClient).mapValues(LogConfig.fromProps(defaultProps, _))
@@ -419,39 +441,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                    scheduler = kafkaScheduler,
                    brokerState = brokerState,
                    time = time)
-  }
-
-  // Copy the subset of properties that are relevant to Logs
-  // I'm listing out individual properties here since the names are slightly different in each Config class...
-  private def copyKafkaConfigToLog(serverProps: java.util.Map[String, Object]): java.util.Map[String, Object] = {
-
-    val logProps = new util.HashMap[String, Object]()
-    val entryset = serverProps.entrySet.iterator
-    while (entryset.hasNext) {
-      val entry = entryset.next
-      entry.getKey match {
-        case KafkaConfig.LogSegmentBytesProp => logProps.put(LogConfig.SegmentBytesProp, entry.getValue)
-        case KafkaConfig.LogRollTimeMillisProp => logProps.put(LogConfig.SegmentMsProp, entry.getValue)
-        case KafkaConfig.LogRollTimeJitterMillisProp => logProps.put(LogConfig.SegmentJitterMsProp, entry.getValue)
-        case KafkaConfig.LogIndexSizeMaxBytesProp => logProps.put(LogConfig.SegmentIndexBytesProp, entry.getValue)
-        case KafkaConfig.LogFlushIntervalMessagesProp => logProps.put(LogConfig.FlushMessagesProp, entry.getValue)
-        case KafkaConfig.LogFlushIntervalMsProp => logProps.put(LogConfig.FlushMsProp, entry.getValue)
-        case KafkaConfig.LogRetentionBytesProp => logProps.put(LogConfig.RetentionBytesProp, entry.getValue)
-        case KafkaConfig.LogRetentionTimeMillisProp => logProps.put(LogConfig.RetentionMsProp, entry.getValue)
-        case KafkaConfig.MessageMaxBytesProp => logProps.put(LogConfig.MaxMessageBytesProp, entry.getValue)
-        case KafkaConfig.LogIndexIntervalBytesProp => logProps.put(LogConfig.IndexIntervalBytesProp, entry.getValue)
-        case KafkaConfig.LogCleanerDeleteRetentionMsProp => logProps.put(LogConfig.DeleteRetentionMsProp, entry.getValue)
-        case KafkaConfig.LogDeleteDelayMsProp => logProps.put(LogConfig.FileDeleteDelayMsProp, entry.getValue)
-        case KafkaConfig.LogCleanerMinCleanRatioProp => logProps.put(LogConfig.MinCleanableDirtyRatioProp, entry.getValue)
-        case KafkaConfig.LogCleanupPolicyProp => logProps.put(LogConfig.CleanupPolicyProp, entry.getValue)
-        case KafkaConfig.MinInSyncReplicasProp => logProps.put(LogConfig.MinInSyncReplicasProp, entry.getValue)
-        case KafkaConfig.CompressionTypeProp => logProps.put(LogConfig.CompressionTypeProp, entry.getValue)
-        case KafkaConfig.UncleanLeaderElectionEnableProp => logProps.put(LogConfig.UncleanLeaderElectionEnableProp, entry.getValue)
-        case KafkaConfig.LogPreAllocateProp => logProps.put(LogConfig.PreAllocateEnableProp, entry.getValue)
-        case _ => // we just leave those out
-      }
-    }
-    logProps
   }
 
   /**
