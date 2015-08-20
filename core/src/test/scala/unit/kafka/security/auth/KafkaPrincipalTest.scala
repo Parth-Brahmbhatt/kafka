@@ -17,11 +17,12 @@
 package unit.kafka.security.auth
 
 import kafka.security.auth.KafkaPrincipal
-import org.junit.Assert
-import org.scalatest.junit.JUnit3Suite
+import org.junit.{Test, Assert}
+import org.scalatest.junit.JUnitSuite
 
-class KafkaPrincipalTest extends JUnit3Suite   {
+class KafkaPrincipalTest extends JUnitSuite   {
 
+  @Test
   def testPrincipalNameCanContainSeparator: Unit = {
     val principalType = "user"
     val name = "name:with:" + KafkaPrincipal.Separator + ":in:it"

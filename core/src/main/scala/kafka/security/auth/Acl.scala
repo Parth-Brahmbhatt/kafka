@@ -110,7 +110,7 @@ case class Acl(principals: Set[KafkaPrincipal], permissionType: PermissionType, 
       Acl.HostsKey -> hosts)
   }
 
-  override def toString() : String = {
+  override def toString: String = {
     "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name, operations.mkString(","), hosts.mkString(","))
   }
 

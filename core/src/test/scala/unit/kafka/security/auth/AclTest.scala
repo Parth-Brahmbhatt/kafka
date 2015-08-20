@@ -18,15 +18,16 @@ package unit.kafka.security.auth
 
 import kafka.security.auth._
 import kafka.utils.Json
-import org.junit.Assert
-import org.scalatest.junit.JUnit3Suite
+import org.junit.{Test, Assert}
+import org.scalatest.junit.JUnitSuite
 
-class AclTest extends JUnit3Suite   {
+class AclTest extends JUnitSuite {
 
   val AclJson = "{\"version\": 1, \"acls\": [{\"hosts\": [\"host1\",\"host2\"],\"permissionType\": \"DENY\",\"operations\": [\"READ\",\"WRITE\"],\"principals\": [\"User:alice\", \"User:bob\"]  },  " +
     "{  \"hosts\": [  \"*\"  ],  \"permissionType\": \"ALLOW\",  \"operations\": [  \"READ\",  \"WRITE\"  ],  \"principals\": [\"User:bob\"]  },  " +
     "{  \"hosts\": [  \"host1\",  \"host2\"  ],  \"permissionType\": \"DENY\",  \"operations\": [  \"read\"  ],  \"principals\": [\"User:bob\"]  }  ]}"
 
+  @Test
   def testAclJsonConversion(): Unit = {
     val acl1 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "alice"), new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read, Write))
     val acl2 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), Allow, Set[String]("*"), Set[Operation](Read, Write))

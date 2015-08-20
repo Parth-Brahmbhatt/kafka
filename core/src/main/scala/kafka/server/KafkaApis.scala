@@ -102,8 +102,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val leaderAndIsrRequest = request.requestObj.asInstanceOf[LeaderAndIsrRequest]
 
-    if( authorizer.map(az => !az.authorize(request.session, ClusterAction , Resource.ClusterResource)).getOrElse(false))
-      throw new AuthorizationException("Request " + leaderAndIsrRequest + " is not authorized.")
+    authorizeClusterAction(request)
 
     try {
       // call replica manager to handle updating partitions to become leader or follower
@@ -137,8 +136,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val stopReplicaRequest = request.requestObj.asInstanceOf[StopReplicaRequest]
 
-    if( authorizer.map(az => !az.authorize(request.session, ClusterAction , Resource.ClusterResource)).getOrElse(false))
-      throw new AuthorizationException("Request " + stopReplicaRequest + " is not authorized.")
+    authorizeClusterAction(request)
 
     val (response, error) = replicaManager.stopReplicas(stopReplicaRequest)
     val stopReplicaResponse = new StopReplicaResponse(stopReplicaRequest.correlationId, response.toMap, error)
@@ -149,8 +147,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
     val updateMetadataRequest = request.requestObj.asInstanceOf[UpdateMetadataRequest]
 
-    if( authorizer.map(az => !az.authorize(request.session, ClusterAction , Resource.ClusterResource)).getOrElse(false))
-      throw new AuthorizationException("Request " + updateMetadataRequest + " is not authorized.")
+    authorizeClusterAction(request)
 
     replicaManager.maybeUpdateMetadataCache(updateMetadataRequest, metadataCache)
 
@@ -164,8 +161,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // stop serving data to clients for the topic being deleted
     val controlledShutdownRequest = request.requestObj.asInstanceOf[ControlledShutdownRequest]
 
-    if( authorizer.map(az => !az.authorize(request.session, ClusterAction , Resource.ClusterResource)).getOrElse(false))
-      throw new AuthorizationException("Request " + controlledShutdownRequest + " is not authorized.")
+    authorizeClusterAction(request)
 
     val partitionsRemaining = controller.shutdownBroker(controlledShutdownRequest.brokerId)
     val controlledShutdownResponse = new ControlledShutdownResponse(controlledShutdownRequest.correlationId,
@@ -187,7 +183,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val filteredRequestInfo = (offsetCommitRequest.requestInfo -- invalidRequestsInfo.keys)
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  filteredRequestInfo.partition {
-      case(topicAndPartition, offsetMetadata) => authorizer.map {
+      case (topicAndPartition, offsetMetadata) => authorizer.map {
         az => az.authorize(request.session, Read, new Resource(Topic, topicAndPartition.topic)) &&
           az.authorize(request.session, Read, new Resource(ConsumerGroup, offsetCommitRequest.groupId))
       }.getOrElse(true)
@@ -285,7 +281,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val numBytesAppended = produceRequest.sizeInBytes
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  produceRequest.data.partition  {
-      case(topicAndPartition, _) => authorizer.map {
+      case (topicAndPartition, _) => authorizer.map {
         az => az.authorize(request.session, Write, new Resource(Topic ,topicAndPartition.topic))
       }.getOrElse(true)
     }
@@ -354,7 +350,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val fetchRequest = request.requestObj.asInstanceOf[FetchRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) =  fetchRequest.requestInfo.partition {
-      case(topicAndPartition, _) => authorizer.map {
+      case (topicAndPartition, _) => authorizer.map {
         az => az.authorize(request.session, Read, new Resource(Topic, topicAndPartition.topic))
       }.getOrElse(true)
     }
@@ -412,7 +408,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val offsetRequest = request.requestObj.asInstanceOf[OffsetRequest]
 
     val (authorizedRequestInfo, unauthorizedRequestInfo) = offsetRequest.requestInfo.partition  {
-      case(topicAndPartition, _) => authorizer.map {
+      case (topicAndPartition, _) => authorizer.map {
         az => az.authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic))
       }.getOrElse(true)
     }
@@ -781,9 +777,15 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def close() {
-    quotaManagers.foreach { case(apiKey, quotaManager) =>
+    quotaManagers.foreach { case (apiKey, quotaManager) =>
       quotaManager.shutdown()
     }
     info("Shutdown complete.")
   }
+
+  def authorizeClusterAction(request: RequestChannel.Request): Unit = {
+    if (!authorizer.map(az => az.authorize(request.session, ClusterAction, Resource.ClusterResource)).getOrElse(true))
+      throw new AuthorizationException(s"Request $request is not authorized.")
+  }
+
 }

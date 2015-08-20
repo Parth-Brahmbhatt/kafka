@@ -41,6 +41,6 @@ object PermissionType {
     pType.getOrElse(throw new KafkaException(permissionType + " not a valid permissionType name. The valid names are " + values.mkString(",")))
   }
 
-  def values = List(Allow, Deny)
+  def values: Seq[PermissionType] = List(Allow, Deny)
 }
 

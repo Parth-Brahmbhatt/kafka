@@ -21,7 +21,7 @@ object Resource {
   val ClusterResourceName = "kafka-cluster"
   val ClusterResource = new Resource(Cluster, Resource.ClusterResourceName)
 
-  def fromString(str: String) : Resource = {
+  def fromString(str: String): Resource = {
     str.split(Separator, 2) match {
       case Array(resourceType, name, _*) => new Resource(ResourceType.fromString(resourceType), name)
       case s => throw new IllegalArgumentException("expected a string in format ResourceType:ResourceName but got " + str)

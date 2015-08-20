@@ -22,7 +22,7 @@ object KafkaPrincipal {
   val Separator = ":"
   val UserType = "User"
 
-  def fromString(str: String) : KafkaPrincipal = {
+  def fromString(str: String): KafkaPrincipal = {
     str.split(Separator, 2) match {
       case Array(principalType, name, _*) => new KafkaPrincipal(principalType, name)
       case s => throw new IllegalArgumentException("expected a string in format principalType:principalName but got " + str)

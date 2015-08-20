@@ -18,11 +18,12 @@ package unit.kafka.security.auth
 
 import kafka.common.{KafkaException}
 import kafka.security.auth.{Operation, Read}
-import org.junit.Assert
-import org.scalatest.junit.JUnit3Suite
+import org.junit.{Test, Assert}
+import org.scalatest.junit.JUnitSuite
 
-class OperationTest extends JUnit3Suite {
+class OperationTest extends JUnitSuite {
 
+  @Test
   def testFromString(): Unit = {
     val op = Operation.fromString("READ")
     Assert.assertEquals(Read, op)

@@ -39,5 +39,5 @@ object Operation {
       op.getOrElse(throw new KafkaException(operation + " not a valid operation name. The valid names are " + values.mkString(",")))
    }
 
-   def values = List(Read, Write, Create, Delete, Alter, Describe, ClusterAction, All)
+   def values: Seq[Operation] = List(Read, Write, Create, Delete, Alter, Describe, ClusterAction, All)
 }
