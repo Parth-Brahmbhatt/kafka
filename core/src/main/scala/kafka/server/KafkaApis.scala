@@ -59,7 +59,8 @@ class KafkaApis(val requestChannel: RequestChannel,
    */
   def handle(request: RequestChannel.Request) {
     try{
-      trace("Handling request: " + request.requestObj + " from connection: " + request.connectionId)
+      trace("Handling request:%s from connection %s;securityProtocol:%s,principal:%s".
+        format(request.requestObj, request.connectionId, request.securityProtocol, request.session.principal))
       request.requestId match {
         case RequestKeys.ProduceKey => handleProducerRequest(request)
         case RequestKeys.FetchKey => handleFetchRequest(request)
@@ -291,18 +292,21 @@ class KafkaApis(val requestChannel: RequestChannel,
       var errorInResponse = false
       val mergedResponseStatus = responseStatus ++ unauthorizedRequestInfo.mapValues(_ => ProducerResponseStatus(ErrorMapping.AuthorizationCode, -1))
 
-      mergedResponseStatus.foreach { case (topicAndPartition, status) =>
+      mergedResponseStatus.foreach
+      { case (topicAndPartition, status) =>
         // we only print warnings for known errors here; if it is unknown, it will cause
         // an error message in the replica manager
         if (status.error != ErrorMapping.NoError && status.error != ErrorMapping.UnknownCode) {
-          debug("Produce request with correlation id %d from client %s on partition %s failed due to %s"
-            .format(produceRequest.correlationId, produceRequest.clientId,
-            topicAndPartition, ErrorMapping.exceptionNameFor(status.error)))
+          debug("Produce request with correlation id %d from client %s on partition %s failed due to %s".format(
+            produceRequest.correlationId,
+            produceRequest.clientId,
+            topicAndPartition,
+            ErrorMapping.exceptionNameFor(status.error)))
           errorInResponse = true
         }
       }
 
-      def produceResponseCallback {
+      def produceResponseCallback(delayTimeMs: Int) {
         if (produceRequest.requiredAcks == 0) {
           // no operation needed if producer request.required.acks = 0; however, if there is any error in handling
           // the request, since no response is expected by the producer, the server will close socket server so that
@@ -317,12 +321,19 @@ class KafkaApis(val requestChannel: RequestChannel,
             requestChannel.noOperation(request.processor, request)
           }
         } else {
-          val response = ProducerResponse(produceRequest.correlationId, mergedResponseStatus)
-          requestChannel.sendResponse(new Response(request, new RequestOrResponseSend(request.connectionId, response)))
+          val response = ProducerResponse(produceRequest.correlationId,
+                                          mergedResponseStatus,
+                                          produceRequest.versionId,
+                                          delayTimeMs)
+          requestChannel.sendResponse(new RequestChannel.Response(request,
+                                                                  new RequestOrResponseSend(request.connectionId,
+                                                                                            response)))
         }
       }
 
-      quotaManagers(RequestKeys.ProduceKey).recordAndMaybeThrottle(produceRequest.clientId, numBytesAppended, produceResponseCallback)
+      quotaManagers(RequestKeys.ProduceKey).recordAndMaybeThrottle(produceRequest.clientId,
+                                                                   numBytesAppended,
+                                                                   produceResponseCallback)
     }
 
     // only allow appending to internal topic partitions
@@ -374,21 +385,20 @@ class KafkaApis(val requestChannel: RequestChannel,
         BrokerTopicStats.getBrokerAllTopicsStats().bytesOutRate.mark(data.messages.sizeInBytes)
       }
 
-      val response = FetchResponse(fetchRequest.correlationId, responsePartitionData)
-      def fetchResponseCallback {
+      def fetchResponseCallback(delayTimeMs: Int) {
+        val response = FetchResponse(fetchRequest.correlationId, responsePartitionData, fetchRequest.versionId, delayTimeMs)
         requestChannel.sendResponse(new RequestChannel.Response(request, new FetchResponseSend(request.connectionId, response)))
       }
 
       // Do not throttle replication traffic
       if (fetchRequest.isFromFollower) {
-        fetchResponseCallback
+        fetchResponseCallback(0)
       } else {
-        quotaManagers.get(RequestKeys.FetchKey) match {
-          case Some(quotaManager) =>
-            quotaManager.recordAndMaybeThrottle(fetchRequest.clientId, response.sizeInBytes, fetchResponseCallback)
-          case None =>
-            warn("Cannot throttle Api key %s".format(RequestKeys.nameForKey(RequestKeys.FetchKey)))
-        }
+        quotaManagers(RequestKeys.FetchKey).recordAndMaybeThrottle(fetchRequest.clientId,
+                                                                   FetchResponse.responseSize(responsePartitionData
+                                                                                                      .groupBy(_._1.topic),
+                                                                                              fetchRequest.versionId),
+                                                                   fetchResponseCallback)
       }
     }
 

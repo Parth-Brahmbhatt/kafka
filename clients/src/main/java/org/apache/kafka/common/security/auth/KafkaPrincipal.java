@@ -21,6 +21,7 @@ import java.security.Principal;
 public class KafkaPrincipal implements Principal {
     public static final String SEPARATOR = ":";
     public static final String USER_TYPE = "User";
+    public final static KafkaPrincipal ANONYMOUS = new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "ANONYMOUS");
 
     private String principalType;
     private String name;
@@ -29,7 +30,6 @@ public class KafkaPrincipal implements Principal {
         if (principalType == null || name == null) {
             throw new IllegalArgumentException("principalType and name can not be null");
         }
-
         this.principalType = principalType;
         this.name = name;
     }
