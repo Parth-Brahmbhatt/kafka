@@ -18,9 +18,10 @@
 package kafka.security.auth
 
 import kafka.utils.Json
+import org.apache.kafka.common.security.auth.KafkaPrincipal
 
 object Acl {
-  val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal(KafkaPrincipal.UserType, "*")
+  val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "*")
   val WildCardHost: String = "*"
   val AllowAllAcl = new Acl(Set[KafkaPrincipal](WildCardPrincipal), Allow, Set[String](WildCardHost), Set[Operation](All))
   val PrincipalKey = "principals"

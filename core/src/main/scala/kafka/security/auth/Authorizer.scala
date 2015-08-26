@@ -20,6 +20,7 @@ package kafka.security.auth
 import kafka.network.RequestChannel.Session
 import kafka.server.KafkaConfig
 import org.apache.kafka.common.Configurable
+import org.apache.kafka.common.security.auth.KafkaPrincipal
 
 /**
  * Top level interface that all plugable authorizer must implement. Kafka server will read "authorizer.class" config

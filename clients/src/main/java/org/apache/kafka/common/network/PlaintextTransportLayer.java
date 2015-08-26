@@ -29,7 +29,6 @@ import java.nio.channels.SelectionKey;
 import java.security.Principal;
 
 import org.apache.kafka.common.security.auth.KafkaPrincipal;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +36,7 @@ public class PlaintextTransportLayer implements TransportLayer {
     private static final Logger log = LoggerFactory.getLogger(PlaintextTransportLayer.class);
     private final SelectionKey key;
     private final SocketChannel socketChannel;
-    private final Principal principal = new KafkaPrincipal("ANONYMOUS");
+    private final Principal principal = new KafkaPrincipal(KafkaPrincipal.USER_TYPE,  "ANONYMOUS");
 
     public PlaintextTransportLayer(SelectionKey key) throws IOException {
         this.key = key;

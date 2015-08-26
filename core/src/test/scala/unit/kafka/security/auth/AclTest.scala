@@ -18,6 +18,7 @@ package unit.kafka.security.auth
 
 import kafka.security.auth._
 import kafka.utils.Json
+import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.junit.{Test, Assert}
 import org.scalatest.junit.JUnitSuite
 
@@ -29,14 +30,14 @@ class AclTest extends JUnitSuite {
 
   @Test
   def testAclJsonConversion(): Unit = {
-    val acl1 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "alice"), new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read, Write))
-    val acl2 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), Allow, Set[String]("*"), Set[Operation](Read, Write))
-    val acl3 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.UserType, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read))
+    val acl1 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "alice"), new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read, Write))
+    val acl2 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Allow, Set[String]("*"), Set[Operation](Read, Write))
+    val acl3 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read))
 
     val acls = Set[Acl](acl1, acl2, acl3)
     val jsonAcls = Json.encode(Acl.toJsonCompatibleMap(acls))
-    Assert.assertEquals(acls, Acl.fromJson(jsonAcls))
 
+    Assert.assertEquals(acls, Acl.fromJson(jsonAcls))
     Assert.assertEquals(acls, Acl.fromJson(AclJson))
   }
 
