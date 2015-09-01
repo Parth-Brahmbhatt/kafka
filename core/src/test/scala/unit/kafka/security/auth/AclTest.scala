@@ -24,15 +24,15 @@ import org.scalatest.junit.JUnitSuite
 
 class AclTest extends JUnitSuite {
 
-  val AclJson = "{\"version\": 1, \"acls\": [{\"hosts\": [\"host1\",\"host2\"],\"permissionType\": \"DENY\",\"operations\": [\"READ\",\"WRITE\"],\"principals\": [\"User:alice\", \"User:bob\"]  },  " +
-    "{  \"hosts\": [  \"*\"  ],  \"permissionType\": \"ALLOW\",  \"operations\": [  \"READ\",  \"WRITE\"  ],  \"principals\": [\"User:bob\"]  },  " +
-    "{  \"hosts\": [  \"host1\",  \"host2\"  ],  \"permissionType\": \"DENY\",  \"operations\": [  \"read\"  ],  \"principals\": [\"User:bob\"]  }  ]}"
+  val AclJson = "{\"version\": 1, \"acls\": [{\"host\": \"host1\",\"permissionType\": \"Deny\",\"operation\": \"READ\", \"principal\": \"User:alice\"  },  " +
+    "{  \"host\":  \"*\" ,  \"permissionType\": \"Allow\",  \"operation\":  \"Read\", \"principal\": \"User:bob\"  },  " +
+    "{  \"host\": \"host1\",  \"permissionType\": \"Deny\",  \"operation\":   \"Read\" ,  \"principal\": \"User:bob\"}  ]}"
 
   @Test
   def testAclJsonConversion(): Unit = {
-    val acl1 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "alice"), new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read, Write))
-    val acl2 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Allow, Set[String]("*"), Set[Operation](Read, Write))
-    val acl3 = new Acl(Set(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob")), Deny, Set[String]("host1","host2"), Set[Operation](Read))
+    val acl1 = new Acl(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "alice"), Deny, "host1" , Read)
+    val acl2 = new Acl(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob"), Allow, "*", Read)
+    val acl3 = new Acl(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "bob"), Deny, "host1", Read)
 
     val acls = Set[Acl](acl1, acl2, acl3)
     val jsonAcls = Json.encode(Acl.toJsonCompatibleMap(acls))

@@ -17,7 +17,6 @@
 package kafka.security.auth
 
 import kafka.common.KafkaException
-;
 
 /**
  * Different operations a client may perform on kafka resources.

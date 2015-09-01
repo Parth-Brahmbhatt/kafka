@@ -23,11 +23,11 @@ import org.apache.kafka.common.security.auth.KafkaPrincipal
 object Acl {
   val WildCardPrincipal: KafkaPrincipal = new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "*")
   val WildCardHost: String = "*"
-  val AllowAllAcl = new Acl(Set[KafkaPrincipal](WildCardPrincipal), Allow, Set[String](WildCardHost), Set[Operation](All))
-  val PrincipalKey = "principals"
+  val AllowAllAcl = new Acl(WildCardPrincipal, Allow, WildCardHost, All)
+  val PrincipalKey = "principal"
   val PermissionTypeKey = "permissionType"
-  val OperationKey = "operations"
-  val HostsKey = "hosts"
+  val OperationKey = "operation"
+  val HostsKey = "host"
   val VersionKey = "version"
   val CurrentVersion = 1
   val AclsKey = "acls"
@@ -41,16 +41,10 @@ object Acl {
         "version": 1,
         "acls": [
           {
-            "hosts": [
-              "host1",
-              "host2"
-            ],
-            "permissionType": "DENY",
-            "operations": [
-              "READ",
-              "WRITE"
-            ],
-            "principal": ["user:alice", "user:bob"]
+            "host":"host1",
+            "permissionType": "Deny",
+            "operation": "Read",
+            "principal": "User:alice"
           }
         ]
       }
@@ -70,11 +64,11 @@ object Acl {
         require(aclMap(VersionKey) == CurrentVersion)
         val aclSet: List[Map[String, Any]] = aclMap(AclsKey).asInstanceOf[List[Map[String, Any]]]
         aclSet.foreach(item => {
-          val principals: List[KafkaPrincipal] = item(PrincipalKey).asInstanceOf[List[String]].map(principal => KafkaPrincipal.fromString(principal))
+          val principal: KafkaPrincipal = KafkaPrincipal.fromString(item(PrincipalKey).asInstanceOf[String])
           val permissionType: PermissionType = PermissionType.fromString(item(PermissionTypeKey).asInstanceOf[String])
-          val operations: List[Operation] = item(OperationKey).asInstanceOf[List[String]].map(operation => Operation.fromString(operation))
-          val hosts: List[String] = item(HostsKey).asInstanceOf[List[String]]
-          acls += new Acl(principals.toSet, permissionType, hosts.toSet, operations.toSet)
+          val operation: Operation = Operation.fromString(item(OperationKey).asInstanceOf[String])
+          val host: String = item(HostsKey).asInstanceOf[String]
+          acls += new Acl(principal, permissionType, host, operation)
         })
       case None =>
     }
@@ -89,30 +83,28 @@ object Acl {
 /**
  * An instance of this class will represent an acl that can express following statement.
  * <pre>
- * Principal P has permissionType PT on Operations O1,O2 from hosts H1,H2.
+ * Principal P has permissionType PT on Operation O1 from hosts H1.
  * </pre>
- * @param principals A value of *:* indicates all users.
+ * @param principal A value of *:* indicates all users.
  * @param permissionType
- * @param hosts A value of * indicates all hosts.
- * @param operations A value of ALL indicates all operations.
+ * @param host A value of * indicates all hosts.
+ * @param operation A value of ALL indicates all operations.
  */
-case class Acl(principals: Set[KafkaPrincipal], permissionType: PermissionType, hosts: Set[String], operations: Set[Operation]) {
+case class Acl(principal: KafkaPrincipal, permissionType: PermissionType, host: String, operation: Operation) {
 
   /**
-   * TODO: Ideally we would have a symmetric toJson method but our current json library fails to decode double parsed json strings so
-   * convert to map which then gets converted to json.
-   * Convert an acl instance to a map
+   * TODO: Ideally we would have a symmetric toJson method but our current json library can not jsonify/dejsonify complex objects.
    * @return Map representation of the Acl.
    */
   def toMap(): Map[String, Any] = {
-    Map(Acl.PrincipalKey -> principals.map(principal => principal.toString),
+    Map(Acl.PrincipalKey -> principal.toString,
       Acl.PermissionTypeKey -> permissionType.name,
-      Acl.OperationKey -> operations.map(operation => operation.name),
-      Acl.HostsKey -> hosts)
+      Acl.OperationKey -> operation.name,
+      Acl.HostsKey -> host)
   }
 
   override def toString: String = {
-    "%s has %s permission for operations: %s from hosts: %s".format(principals.mkString(","), permissionType.name, operations.mkString(","), hosts.mkString(","))
+    "%s has %s permission for operations: %s from hosts: %s".format(principal, permissionType.name, operation, host)
   }
 
 }

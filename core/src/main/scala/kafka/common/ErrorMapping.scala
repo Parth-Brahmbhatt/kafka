@@ -53,7 +53,7 @@ object ErrorMapping {
   val NotEnoughReplicasAfterAppendCode: Short = 20
   // 21: InvalidRequiredAcks
   // 22: IllegalConsumerGeneration
-  val AuthorizationCode: Short = 23;
+  val AuthorizationCode: Short = 29;
 
   private val exceptionToCode =
     Map[Class[Throwable], Short](
