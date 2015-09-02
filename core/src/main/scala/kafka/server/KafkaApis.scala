@@ -675,8 +675,6 @@ class KafkaApis(val requestChannel: RequestChannel,
     if (authorizer.map(az => !az.authorize(request.session, Read, new Resource(ConsumerGroup, consumerMetadataRequest.group))).getOrElse(false))
       throw new AuthorizationException("Request " + consumerMetadataRequest + " is not authorized to read from consumer group" + consumerMetadataRequest.group)
 
-    val topicResponses = metadataCache.getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol)
-
     //get metadata (and create the topic if necessary)
     val offsetsTopicMetadata = getTopicMetadata(Set(ConsumerCoordinator.OffsetsTopicName), request.securityProtocol).head
 
