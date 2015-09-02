@@ -292,8 +292,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       var errorInResponse = false
       val mergedResponseStatus = responseStatus ++ unauthorizedRequestInfo.mapValues(_ => ProducerResponseStatus(ErrorMapping.AuthorizationCode, -1))
 
-      mergedResponseStatus.foreach
-      { case (topicAndPartition, status) =>
+      mergedResponseStatus.foreach { case (topicAndPartition, status) =>
         // we only print warnings for known errors here; if it is unknown, it will cause
         // an error message in the replica manager
         if (status.error != ErrorMapping.NoError && status.error != ErrorMapping.UnknownCode) {
