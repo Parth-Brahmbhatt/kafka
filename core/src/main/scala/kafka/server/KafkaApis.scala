@@ -190,8 +190,6 @@ class KafkaApis(val requestChannel: RequestChannel,
           authorize(request.session, Read, new Resource(ConsumerGroup, offsetCommitRequest.groupId))
     }
 
-    //FIXME Use the above?
-
     // the callback for sending an offset commit response
     def sendResponseCallback(commitStatus: immutable.Map[TopicAndPartition, Short]) {
       val mergedCommitStatus = commitStatus ++ unauthorizedRequestInfo.mapValues(_ => ErrorMapping.AuthorizationCode)
