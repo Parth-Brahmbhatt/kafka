@@ -578,7 +578,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     //when topics is empty this will be a duplicate authorization check but given this should just be a cache lookup, it should not matter.
-    val (authorizedTopics, unauthorizedTopics) = topics.partition(topic => authorize(request.session, Describe, new Resource(Topic, topic)))
+    var (authorizedTopics, unauthorizedTopics) = topics.partition(topic => authorize(request.session, Describe, new Resource(Topic, topic)))
 
     if (!authorizedTopics.isEmpty) {
       val topicResponses = metadataCache.getTopicMetadata(authorizedTopics, request.securityProtocol)
@@ -611,7 +611,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     val (authorizedTopicPartitions, unauthorizedTopicPartitions) = offsetFetchRequest.requestInfo.partition { topicAndPartition =>
       authorize(request.session, Describe, new Resource(Topic, topicAndPartition.topic)) &&
-        authorize(request.session, Read, new Resource(ConsumerGroup, offsetFetchRequest.groupId)
+        authorize(request.session, Read, new Resource(ConsumerGroup, offsetFetchRequest.groupId))
     }
 
     val authorizationError = OffsetMetadataAndError(OffsetMetadata.InvalidOffsetMetadata, ErrorMapping.AuthorizationCode)
@@ -723,6 +723,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def handleHeartbeatRequest(request: RequestChannel.Request) {
+    val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
+    val respHeader = new ResponseHeader(request.header.correlationId)
 
     // the callback for sending a heartbeat response
     def sendResponseCallback(errorCode: Short) {
@@ -731,9 +733,6 @@ class KafkaApis(val requestChannel: RequestChannel,
         .format(response, request.header.correlationId, request.header.clientId))
       requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, respHeader, response)))
     }
-
-    val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
-    val respHeader = new ResponseHeader(request.header.correlationId)
 
     if (!authorize(request.session, Read, new Resource(ConsumerGroup, heartbeatRequest.groupId))) {
       val heartbeatResponse = new HeartbeatResponse(ErrorMapping.AuthorizationCode)
