@@ -70,7 +70,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   private var zkClient: ZkClient = null
   private var aclChangeListener: ZkNodeChangeNotificationListener = null
 
-  private val aclCache = new scala.collection.mutable.HashMap[Resource, Set[Acl]]
+  private val aclCache = scala.collection.mutable.Map.empty[Resource, Set[Acl]]
   private val lock = new ReentrantReadWriteLock()
 
   /**
@@ -82,15 +82,13 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
     configs foreach { case (key, value) => props.put(key, value.toString) }
     val kafkaConfig = KafkaConfig.fromProps(props)
 
-    superUsers = javaConfigs.get(SimpleAclAuthorizer.SuperUsersProp) match {
-      case null => Set.empty[KafkaPrincipal]
-      case (str: String) => if (!str.isEmpty) str.split(",").map(s => KafkaPrincipal.fromString(s.trim)).toSet else Set.empty[KafkaPrincipal]
-      case _ => Set.empty
-    }
+    superUsers = configs.get(SimpleAclAuthorizer.SuperUsersProp).collect {
+      case str: String if str.nonEmpty =>
+        str.split(",").map(s => KafkaPrincipal.fromString(s.trim)).toSet
+    }.getOrElse(Set.empty[KafkaPrincipal])
 
-    shouldAllowEveryoneIfNoAclIsFound = if (configs.contains(SimpleAclAuthorizer.AllowEveryoneIfNoAclIsFoundProp))
-      javaConfigs.get(SimpleAclAuthorizer.AllowEveryoneIfNoAclIsFoundProp).toString.toBoolean
-    else false
+    shouldAllowEveryoneIfNoAclIsFound =
+      configs.get(SimpleAclAuthorizer.AllowEveryoneIfNoAclIsFoundProp).map(_.toString.toBoolean).getOrElse(false)
 
     val zkUrl = configs.getOrElse(SimpleAclAuthorizer.ZkUrlProp, kafkaConfig.zkConnect).toString
     val zkConnectionTimeoutMs = configs.getOrElse(SimpleAclAuthorizer.ZkConnectionTimeOutProp, kafkaConfig.zkConnectionTimeoutMs).toString.toInt
@@ -122,7 +120,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
       Set[Operation](operation)
 
     //now check if there is any allow acl that will allow this operation.
-    val allowMatch = ops.find(operation => aclMatch(session, operation, resource, principal, host, Allow, acls)).map(_ => true).getOrElse(false)
+    val allowMatch = ops.exists(operation => aclMatch(session, operation, resource, principal, host, Allow, acls))
 
     //we allow an operation if a user is a super user or if no acls are found and user has configured to allow all users
     //when no acls are found or if no deny acls are found and at least one allow acls matches.
@@ -181,8 +179,8 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
       val aclNeedsRemoval = (existingAcls != filteredAcls)
       if (aclNeedsRemoval) {
-        val path: String = toResourcePath(resource)
-        if(filteredAcls.nonEmpty)
+        val path = toResourcePath(resource)
+        if (filteredAcls.nonEmpty)
           ZkUtils.updatePersistentPath(zkClient, path, Json.encode(Acl.toJsonCompatibleMap(filteredAcls)))
         else
           ZkUtils.deletePath(zkClient, toResourcePath(resource))
@@ -213,10 +211,10 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   }
 
   override def getAcls(principal: KafkaPrincipal): Map[Resource, Set[Acl]] = {
-    aclCache.map {
-      case (resource, acls) => (resource, acls.filter(acl => acl.principal == principal))
-    }.filter {
-      case (resource, acls) => acls.nonEmpty
+    aclCache.mapValues { acls =>
+      acls.filter(_.principal == principal)
+    }.filter { case (_, acls) =>
+      acls.nonEmpty
     }.toMap
   }
 
