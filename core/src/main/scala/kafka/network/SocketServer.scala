@@ -441,7 +441,7 @@ private[kafka] class Processor(val id: Int,
    */
   override def close(key: SelectionKey): Unit = {
     lruConnections.remove(key)
-    val channel = socketContainer.get(channelFor(key))
+    val channel = socketContainer.remove(channelFor(key))
     swallowError(channel.close())
     key.attach(null)
     swallowError(key.cancel())
