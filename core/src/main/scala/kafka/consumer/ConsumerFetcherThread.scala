@@ -25,11 +25,13 @@ import kafka.common.{ErrorMapping, TopicAndPartition}
 import scala.collection.JavaConverters
 import JavaConverters._
 import ConsumerFetcherThread._
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 class ConsumerFetcherThread(name: String,
                             val config: ConsumerConfig,
                             sourceBroker: BrokerEndPoint,
                             partitionMap: Map[TopicAndPartition, PartitionTopicInfo],
+                            protocol: SecurityProtocol,
                             val consumerFetcherManager: ConsumerFetcherManager)
         extends AbstractFetcherThread(name = name,
                                       clientId = config.clientId,
@@ -44,7 +46,7 @@ class ConsumerFetcherThread(name: String,
   private val fetchSize = config.fetchMessageMaxBytes
 
   private val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, config.socketTimeoutMs,
-    config.socketReceiveBufferBytes, config.clientId)
+    config.socketReceiveBufferBytes, config.clientId, protocol)
 
   private val fetchRequestBuilder = new FetchRequestBuilder().
     clientId(clientId).

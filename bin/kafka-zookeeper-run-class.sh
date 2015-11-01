@@ -20,13 +20,6 @@ then
   exit 1
 fi
 
-# need to check if its called from kafka-server-start.sh
-# to correctly decide about JMX_PORT
-ISKAFKASERVER="false"
-if [[ "$*" =~ "kafka.Kafka" ]]; then
-    ISKAFKASERVER="true"
-fi
-
 base_dir=$(dirname $0)/..
 
 # create logs directory
@@ -44,12 +37,6 @@ fi
 
 if [ -z "$SCALA_BINARY_VERSION" ]; then
 	SCALA_BINARY_VERSION=2.10
-fi
-
-# run kafka-env.sh
-KAFKA_ENV=$base_dir/config/kafka-env.sh
-if [ -f $KAFKA_ENV ]; then
-    . $KAFKA_ENV
 fi
 
 # run ./gradlew copyDependantLibs to get all dependant jars in a local dir
@@ -95,14 +82,8 @@ if [ -z "$KAFKA_JMX_OPTS" ]; then
 fi
 
 # JMX port to use
-if [ $ISKAFKASERVER = "true" ]; then
-    JMX_REMOTE_PORT=$JMX_PORT
-else
-    JMX_REMOTE_PORT=$CLIENT_JMX_PORT
-fi
-
-if [ $JMX_REMOTE_PORT ]; then
-  KAFKA_JMX_OPTS="$KAFKA_JMX_OPTS -Dcom.sun.management.jmxremote.port=$JMX_REMOTE_PORT "
+if [  $JMX_PORT ]; then
+  KAFKA_JMX_OPTS="$KAFKA_JMX_OPTS -Dcom.sun.management.jmxremote.port=$JMX_PORT "
 fi
 
 # Log4j settings
@@ -137,13 +118,7 @@ fi
 #JAAS config file params
 if [ -z "$KAFKA_KERBEROS_PARAMS" ]; then
     KAFKA_KERBEROS_PARAMS=""
-else
-    # check client kerberos params present than it takes precedence
-    if [ ! -z "$KAFKA_KERBEROS_PARAMS" ] && [ ! -z "$KAFKA_CLIENT_KERBEROS_PARAMS" ]; then
-        KAFKA_KERBEROS_PARAMS=$KAFKA_CLIENT_KERBEROS_PARAMS
-    fi
 fi
-
 while [ $# -gt 0 ]; do
   COMMAND=$1
   case $COMMAND in

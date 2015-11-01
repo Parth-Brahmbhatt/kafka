@@ -233,6 +233,12 @@ object ConsoleConsumer extends Logging {
       .describedAs("deserializer for values")
       .ofType(classOf[String])
 
+    val securityProtocolOpt = parser.accepts("security-protocol", "The security protocol to use to connect to broker.")
+      .withRequiredArg
+      .describedAs("security-protocol")
+      .ofType(classOf[String])
+      .defaultsTo("PLAINTEXT")
+
     if (args.length == 0)
       CommandLineUtils.printUsageAndDie(parser, "The console consumer is a tool that reads data from Kafka and outputs it to standard output.")
 
@@ -257,6 +263,7 @@ object ConsoleConsumer extends Logging {
     val bootstrapServer = options.valueOf(bootstrapServerOpt)
     val keyDeserializer = options.valueOf(keyDeserializerOpt)
     val valueDeserializer = options.valueOf(valueDeserializerOpt)
+    val securityProtocol = options.valueOf(securityProtocolOpt).toString
     val formatter: MessageFormatter = messageFormatterClass.newInstance().asInstanceOf[MessageFormatter]
     formatter.init(formatterArgs)
 
@@ -277,7 +284,7 @@ object ConsoleConsumer extends Logging {
       val verifiableProps = new VerifiableProperties(csvReporterProps)
       KafkaMetricsReporter.startReporters(verifiableProps)
     }
-
+    consumerProps.put("security.protocol", securityProtocol)
     //Provide the consumer with a randomly assigned group id
     if(!consumerProps.containsKey(ConsumerConfig.GROUP_ID_CONFIG)) {
       consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG,"console-consumer-" + new Random().nextInt(100000))

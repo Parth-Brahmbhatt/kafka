@@ -18,11 +18,18 @@
 package kafka.network
 
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException;
 import java.nio.channels._
-
+import kafka.utils.{nonthreadsafe, Logging, SystemTime}
 import kafka.api.RequestOrResponse
-import kafka.utils.{Logging, nonthreadsafe}
-import org.apache.kafka.common.network.NetworkReceive
+import kafka.common.security.LoginManager
+import org.apache.kafka.common.security.auth.{PrincipalBuilder, DefaultPrincipalBuilder}
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.JaasUtils
+import org.apache.kafka.common.security.authenticator.SaslClientAuthenticator
+import org.apache.kafka.clients.{CommonClientConfigs, ClientUtils}
+import org.apache.kafka.common.network.{TransportLayer, KafkaChannel, BlockingPlaintextTransportLayer,
+  NetworkReceive, DefaultAuthenticator, Authenticator}
 
 
 object BlockingChannel{
@@ -34,50 +41,56 @@ object BlockingChannel{
  *
  */
 @nonthreadsafe
-class BlockingChannel( val host: String, 
-                       val port: Int, 
-                       val readBufferSize: Int, 
-                       val writeBufferSize: Int, 
-                       val readTimeoutMs: Int ) extends Logging {
+class BlockingChannel( val host: String,
+                       val port: Int,
+                       val readBufferSize: Int,
+                       val writeBufferSize: Int,
+                       val readTimeoutMs: Int,
+                       val protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
+
   private var connected = false
-  private var channel: SocketChannel = null
+  private var channel: KafkaChannel = null
   private var readChannel: ReadableByteChannel = null
   private var writeChannel: GatheringByteChannel = null
+  private val id = "-2"
   private val lock = new Object()
   private val connectTimeoutMs = readTimeoutMs
-  private var connectionId: String = ""
+  private val handshakeTimeoutMs = readTimeoutMs
+
 
   def connect() = lock synchronized  {
     if(!connected) {
       try {
-        channel = SocketChannel.open()
+        val socketChannel = SocketChannel.open()
         if(readBufferSize > 0)
-          channel.socket.setReceiveBufferSize(readBufferSize)
+          socketChannel.socket.setReceiveBufferSize(readBufferSize)
         if(writeBufferSize > 0)
-          channel.socket.setSendBufferSize(writeBufferSize)
-        channel.configureBlocking(true)
-        channel.socket.setSoTimeout(readTimeoutMs)
-        channel.socket.setKeepAlive(true)
-        channel.socket.setTcpNoDelay(true)
-        channel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
+          socketChannel.socket.setSendBufferSize(writeBufferSize)
+        socketChannel.configureBlocking(true)
+        socketChannel.socket.setSoTimeout(readTimeoutMs)
+        socketChannel.socket.setKeepAlive(true)
+        socketChannel.socket.setTcpNoDelay(true)
+        socketChannel.socket.connect(new InetSocketAddress(host, port), connectTimeoutMs)
+        channel = buildKafkaChannel(socketChannel, readBufferSize, id)
 
-        writeChannel = channel
-        // Need to create a new ReadableByteChannel from input stream because SocketChannel doesn't implement read with timeout
-        // See: http://stackoverflow.com/questions/2866557/timeout-for-socketchannel-doesnt-work
-        readChannel = Channels.newChannel(channel.socket().getInputStream)
+        val handshakeInterval = SystemTime.milliseconds
+        while(!channel.ready) {
+          channel.prepare();
+          if (!channel.ready && ((SystemTime.milliseconds - handshakeInterval) > handshakeTimeoutMs)) {
+            throw new SocketTimeoutException("Socket timeout during handshake")
+          }
+        }
+
+        writeChannel = channel.transportLayer
+        readChannel = Channels.newChannel(channel.transportLayer.socketChannel().socket().getInputStream)
         connected = true
-        val localHost = channel.socket.getLocalAddress.getHostAddress
-        val localPort = channel.socket.getLocalPort
-        val remoteHost = channel.socket.getInetAddress.getHostAddress
-        val remotePort = channel.socket.getPort
-        connectionId = localHost + ":" + localPort + "-" + remoteHost + ":" + remotePort
         // settings may not match what we requested above
         val msg = "Created socket with SO_TIMEOUT = %d (requested %d), SO_RCVBUF = %d (requested %d), SO_SNDBUF = %d (requested %d), connectTimeoutMs = %d."
-        debug(msg.format(channel.socket.getSoTimeout,
+        debug(msg.format(channel.transportLayer.socketChannel.socket.getSoTimeout,
                          readTimeoutMs,
-                         channel.socket.getReceiveBufferSize, 
+                         channel.transportLayer.socketChannel.socket.getReceiveBufferSize,
                          readBufferSize,
-                         channel.socket.getSendBufferSize,
+                         channel.transportLayer.socketChannel.socket.getSendBufferSize,
                          writeBufferSize,
                          connectTimeoutMs))
 
@@ -86,11 +99,10 @@ class BlockingChannel( val host: String,
       }
     }
   }
-  
+
   def disconnect() = lock synchronized {
     if(channel != null) {
       swallow(channel.close())
-      swallow(channel.socket.close())
       channel = null
       writeChannel = null
     }
@@ -105,14 +117,13 @@ class BlockingChannel( val host: String,
 
   def isConnected = connected
 
-  def send(request: RequestOrResponse): Long = {
+  def send(request: RequestOrResponse):Long = {
     if(!connected)
       throw new ClosedChannelException()
-
-    val send = new RequestOrResponseSend(connectionId, request)
+    val send = new RequestOrResponseSend(id, request)
     send.writeCompletely(writeChannel)
   }
-  
+
   def receive(): NetworkReceive = {
     if(!connected)
       throw new ClosedChannelException()
@@ -128,6 +139,20 @@ class BlockingChannel( val host: String,
     while (!response.complete())
       response.readFromReadableChannel(channel)
     response
+  }
+
+  private def buildKafkaChannel(socketChannel: SocketChannel, maxReceiveSize: Int, id: String): KafkaChannel = {
+    val transportLayer = new BlockingPlaintextTransportLayer(socketChannel)
+    var authenticator : Authenticator = null
+    val principalBuilder = new DefaultPrincipalBuilder()
+    if (protocol == SecurityProtocol.SASL_PLAINTEXT)
+      authenticator = new SaslClientAuthenticator(id, LoginManager.subject, LoginManager.serviceName,
+        socketChannel.socket().getInetAddress().getHostName())
+    else
+      authenticator = new DefaultAuthenticator()
+
+    authenticator.configure(transportLayer, principalBuilder, new java.util.HashMap[String, Any]())
+    return new KafkaChannel(id, transportLayer, authenticator, maxReceiveSize)
   }
 
 }

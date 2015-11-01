@@ -17,4 +17,5 @@
 if [ "x$KAFKA_HEAP_OPTS" = "x" ]; then
     export KAFKA_HEAP_OPTS="-Xmx512M"
 fi
+export KAFKA_CLIENT_KERBEROS_PARAMS="-Djava.security.auth.login.config=/usr/hdp/current/kafka-broker/config/kafka_client_jaas.conf"
 exec $(dirname $0)/kafka-run-class.sh kafka.tools.ConsumerPerformance $@
