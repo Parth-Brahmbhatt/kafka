@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -25,6 +25,10 @@ import kafka.api.{OffsetRequest, FetchRequestBuilder, Request}
 import kafka.cluster.BrokerEndPoint
 import scala.collection.JavaConversions._
 import kafka.common.TopicAndPartition
+import kafka.common.security.LoginManager
+import org.apache.kafka.common.config.SaslConfigs
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.JaasUtils
 import org.apache.kafka.common.utils.Utils
 
 /**
@@ -93,8 +97,15 @@ object SimpleConsumerShell extends Logging {
     val skipMessageOnErrorOpt = parser.accepts("skip-message-on-error", "If there is an error when processing a message, " +
         "skip it instead of halt.")
     val noWaitAtEndOfLogOpt = parser.accepts("no-wait-at-logend",
-        "If set, when the simple consumer reaches the end of the Log, it will stop, not waiting for new produced messages")
-        
+      "If set, when the simple consumer reaches the end of the Log, it will stop, not waiting for new produced messages")
+
+    val securityProtocolOpt = parser.accepts("security-protocol", "The security protocol to use to connect to broker.")
+      .withRequiredArg
+      .describedAs("security-protocol")
+      .ofType(classOf[String])
+      .defaultsTo("PLAINTEXT")
+
+
     if(args.length == 0)
       CommandLineUtils.printUsageAndDie(parser, "A low-level tool for fetching data directly from a particular replica.")
 
@@ -116,12 +127,21 @@ object SimpleConsumerShell extends Logging {
 
     val messageFormatterClass = Class.forName(options.valueOf(messageFormatterOpt))
     val formatterArgs = CommandLineUtils.parseKeyValueArgs(options.valuesOf(messageFormatterArgOpt))
-
+    val securityProtocol = SecurityProtocol.valueOf(options.valueOf(securityProtocolOpt).toString)
     val fetchRequestBuilder = new FetchRequestBuilder()
                        .clientId(clientId)
                        .replicaId(Request.DebuggingConsumerId)
                        .maxWait(maxWaitMs)
                        .minBytes(ConsumerConfig.MinFetchBytes)
+
+    if (securityProtocol == SecurityProtocol.SASL_PLAINTEXT) {
+      val saslConfigs = new java.util.HashMap[String, Any]()
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_WINDOW_FACTOR, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_MIN_TIME_BEFORE_RELOGIN, SaslConfigs.DEFAULT_KERBEROS_MIN_TIME_BEFORE_RELOGIN)
+      LoginManager.init(JaasUtils.LOGIN_CONTEXT_CLIENT, saslConfigs)
+    }
 
     // getting topic metadata
     info("Getting topic metatdata...")
@@ -251,5 +271,6 @@ object SimpleConsumerShell extends Logging {
     System.out.flush()
     formatter.close()
     simpleConsumer.close()
+    LoginManager.shutdown
   }
 }

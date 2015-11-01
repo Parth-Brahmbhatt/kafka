@@ -24,7 +24,7 @@ import kafka.consumer.SimpleConsumer
 import kafka.utils._
 import org.apache.log4j.Logger
 import kafka.common.TopicAndPartition
-
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 /**
  * Performance test for the simple consumer
@@ -44,7 +44,7 @@ object SimpleConsumerPerformance {
         println("time, fetch.size, data.consumed.in.MB, MB.sec, data.consumed.in.nMsg, nMsg.sec")
     }
 
-    val consumer = new SimpleConsumer(config.url.getHost, config.url.getPort, 30*1000, 2*config.fetchSize, config.clientId)
+    val consumer = new SimpleConsumer(config.url.getHost, config.url.getPort, 30*1000, 2*config.fetchSize, config.clientId, config.securityProtocol)
 
     // reset to latest or smallest offset
     val topicAndPartition = TopicAndPartition(config.topic, config.partition)
@@ -139,7 +139,14 @@ object SimpleConsumerPerformance {
                            .withRequiredArg
                            .describedAs("clientId")
                            .ofType(classOf[String])
-                           .defaultsTo("SimpleConsumerPerformanceClient")
+      .defaultsTo("SimpleConsumerPerformanceClient")
+
+    val securityProtocolOpt = parser.accepts("security-protocol", "The security protocol to use to connect to broker.")
+      .withRequiredArg
+      .describedAs("security-protocol")
+      .ofType(classOf[String])
+      .defaultsTo("PLAINTEXT")
+
 
     val options = parser.parse(args : _*)
 
@@ -156,5 +163,6 @@ object SimpleConsumerPerformance {
     val dateFormat = new SimpleDateFormat(options.valueOf(dateFormatOpt))
     val hideHeader = options.has(hideHeaderOpt)
     val clientId = options.valueOf(clientIdOpt).toString
+    val securityProtocol = SecurityProtocol.valueOf(options.valueOf(securityProtocolOpt).toString)
   }
 }

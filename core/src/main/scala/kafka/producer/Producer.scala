@@ -20,11 +20,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 
 import kafka.common.{AppInfo, QueueFullException}
+import kafka.common.security.LoginManager
 import kafka.metrics._
 import kafka.producer.async.{DefaultEventHandler, EventHandler, ProducerSendThread}
 import kafka.serializer.Encoder
 import kafka.utils._
-
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.JaasUtils
+import org.apache.kafka.common.config.SaslConfigs
 
 class Producer[K,V](val config: ProducerConfig,
                     private val eventHandler: EventHandler[K,V])  // only for unit testing
@@ -36,6 +39,17 @@ class Producer[K,V](val config: ProducerConfig,
   private var sync: Boolean = true
   private var producerSendThread: ProducerSendThread[K,V] = null
   private val lock = new Object()
+  private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
+
+  if(protocol == SecurityProtocol.SASL_PLAINTEXT) {
+    val saslConfigs = new java.util.HashMap[String, Any]()
+    saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, config.saslKerberosKinitCmd)
+    saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, config.saslKerberosTicketRenewJitter.toDouble)
+    saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_WINDOW_FACTOR, config.saslKerberosTicketRenewWindowFactor.toDouble)
+    saslConfigs.put(SaslConfigs.SASL_KERBEROS_MIN_TIME_BEFORE_RELOGIN, config.saslKerberosMinTimeBeforeRelogin.toLong)
+    LoginManager.init(JaasUtils.LOGIN_CONTEXT_CLIENT, saslConfigs)
+  }
+
 
   config.producerType match {
     case "sync" =>
@@ -132,10 +146,9 @@ class Producer[K,V](val config: ProducerConfig,
         if (producerSendThread != null)
           producerSendThread.shutdown
         eventHandler.close
+        LoginManager.shutdown
         info("Producer shutdown completed in " + (System.nanoTime() - startTime) / 1000000 + " ms")
       }
     }
   }
 }
-
-

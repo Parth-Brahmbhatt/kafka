@@ -19,6 +19,8 @@ package kafka.producer
 
 import java.util.Properties
 import kafka.utils.VerifiableProperties
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.config.SaslConfigs
 
 class SyncProducerConfig private (val props: VerifiableProperties) extends SyncProducerConfigShared {
   def this(originalProps: Properties) {
@@ -35,7 +37,7 @@ class SyncProducerConfig private (val props: VerifiableProperties) extends SyncP
 
 trait SyncProducerConfigShared {
   val props: VerifiableProperties
-  
+
   val sendBufferBytes = props.getInt("send.buffer.bytes", 100*1024)
 
   /* the client application sending the producer requests */
@@ -56,11 +58,17 @@ trait SyncProducerConfigShared {
    * The ack timeout of the producer requests. Value must be non-negative and non-zero
    */
   val requestTimeoutMs = props.getIntInRange("request.timeout.ms", SyncProducerConfig.DefaultAckTimeoutMs,
-                                             (1, Integer.MAX_VALUE))
+    (1, Integer.MAX_VALUE))
+  val securityProtocol = props.getString("security.protocol", SyncProducerConfig.DefaultSecurityProtocol)
+  val saslKerberosKinitCmd = props.getString(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
+  val saslKerberosTicketRenewWindowFactor = props.getString(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_WINDOW_FACTOR, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_WINDOW_FACTOR.toString)
+  val saslKerberosTicketRenewJitter = props.getString(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER.toString)
+  val saslKerberosMinTimeBeforeRelogin = props.getString(SaslConfigs.SASL_KERBEROS_MIN_TIME_BEFORE_RELOGIN, SaslConfigs.DEFAULT_KERBEROS_MIN_TIME_BEFORE_RELOGIN.toString)
 }
 
 object SyncProducerConfig {
   val DefaultClientId = ""
   val DefaultRequiredAcks : Short = 0
   val DefaultAckTimeoutMs = 10000
+  val DefaultSecurityProtocol = SecurityProtocol.PLAINTEXT.toString
 }

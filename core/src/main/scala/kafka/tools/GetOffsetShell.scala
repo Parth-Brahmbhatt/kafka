@@ -24,6 +24,10 @@ import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
 import kafka.common.TopicAndPartition
 import kafka.client.ClientUtils
 import kafka.utils.{ToolsUtils, CommandLineUtils}
+import kafka.common.security.LoginManager
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.config.SaslConfigs
+import org.apache.kafka.common.security.JaasUtils
 
 
 object GetOffsetShell {
@@ -57,7 +61,13 @@ object GetOffsetShell {
                            .describedAs("ms")
                            .ofType(classOf[java.lang.Integer])
                            .defaultsTo(1000)
-                           
+
+    val securityProtocolOpt = parser.accepts("security-protocol", "The security protocol to use to connect to broker.")
+      .withRequiredArg
+      .describedAs("security-protocol")
+      .ofType(classOf[String])
+      .defaultsTo("PLAINTEXT")
+
    if(args.length == 0)
       CommandLineUtils.printUsageAndDie(parser, "An interactive shell for getting consumer offsets.")
 
@@ -74,6 +84,15 @@ object GetOffsetShell {
     var time = options.valueOf(timeOpt).longValue
     val nOffsets = options.valueOf(nOffsetsOpt).intValue
     val maxWaitMs = options.valueOf(maxWaitMsOpt).intValue()
+    val securityProtocol = SecurityProtocol.valueOf(options.valueOf(securityProtocolOpt).toString)
+    if (securityProtocol == SecurityProtocol.SASL_PLAINTEXT) {
+      val saslConfigs = new java.util.HashMap[String, Any]()
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_WINDOW_FACTOR, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_MIN_TIME_BEFORE_RELOGIN, SaslConfigs.DEFAULT_KERBEROS_MIN_TIME_BEFORE_RELOGIN)
+      LoginManager.init(JaasUtils.LOGIN_CONTEXT_CLIENT, saslConfigs)
+    }
 
     val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, clientId, maxWaitMs).topicsMetadata
     if(topicsMetadata.size != 1 || !topicsMetadata(0).topic.equals(topic)) {
@@ -104,5 +123,6 @@ object GetOffsetShell {
         case None => System.err.println("Error: partition %d does not exist".format(partitionId))
       }
     }
+    LoginManager.shutdown
   }
 }

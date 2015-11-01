@@ -94,6 +94,7 @@ object ConsoleProducer {
     props.put("serializer.class", config.valueEncoderClass)
     props.put("send.buffer.bytes", config.socketBuffer.toString)
     props.put("topic.metadata.refresh.interval.ms", config.metadataExpiryMs.toString)
+    props.put("security.protocol", config.securityProtocol.toString)
     props.put("client.id", "console-producer")
 
     props
@@ -283,6 +284,7 @@ object ConsoleProducer {
     val maxPartitionMemoryBytes = options.valueOf(maxPartitionMemoryBytesOpt)
     val metadataExpiryMs = options.valueOf(metadataExpiryMsOpt)
     val maxBlockMs = options.valueOf(maxBlockMsOpt)
+    val securityProtocol = options.valueOf(securityProtocolOpt).toString
   }
 
   trait MessageReader {

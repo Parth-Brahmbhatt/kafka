@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -25,9 +25,12 @@ import kafka.api._
 import kafka.network._
 import kafka.utils._
 import kafka.common.{ErrorMapping, TopicAndPartition}
+import kafka.common.security.LoginManager
 import org.apache.kafka.common.network.{NetworkReceive, Receive}
 import org.apache.kafka.common.utils.Utils._
-
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.JaasUtils
+import org.apache.kafka.common.config.SaslConfigs
 /**
  * A consumer of kafka messages
  */
@@ -36,13 +39,26 @@ class SimpleConsumer(val host: String,
                      val port: Int,
                      val soTimeout: Int,
                      val bufferSize: Int,
-                     val clientId: String) extends Logging {
+                     val clientId: String,
+                     val protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
 
   ConsumerConfig.validateClientId(clientId)
+  if (protocol == SecurityProtocol.SASL_PLAINTEXT) {
+    if (!LoginManager.isStarted.get()) {
+      val saslConfigs = new java.util.HashMap[String, Any]()
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_WINDOW_FACTOR, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)
+      saslConfigs.put(SaslConfigs.SASL_KERBEROS_MIN_TIME_BEFORE_RELOGIN, SaslConfigs.DEFAULT_KERBEROS_MIN_TIME_BEFORE_RELOGIN)
+      LoginManager.init(JaasUtils.LOGIN_CONTEXT_CLIENT, saslConfigs)
+    }
+  }
+
   private val lock = new Object()
-  private val blockingChannel = new BlockingChannel(host, port, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout)
+  private val blockingChannel = new BlockingChannel(host, port, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout, protocol)
   private val fetchRequestAndResponseStats = FetchRequestAndResponseStatsRegistry.getFetchRequestAndResponseStats(clientId)
   private var isClosed = false
+
 
   private def connect(): BlockingChannel = {
     close
@@ -76,7 +92,7 @@ class SimpleConsumer(val host: String,
       isClosed = true
     }
   }
-  
+
   private def sendRequest(request: RequestOrResponse): NetworkReceive = {
     lock synchronized {
       var response: NetworkReceive = null
@@ -193,4 +209,3 @@ class SimpleConsumer(val host: String,
     offset
   }
 }
-

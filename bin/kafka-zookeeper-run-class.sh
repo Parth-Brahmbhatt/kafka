@@ -20,13 +20,6 @@ then
   exit 1
 fi
 
-# need to check if its called from kafka-server-start.sh
-# to correctly decide about JMX_PORT
-ISKAFKASERVER="false"
-if [[ "$*" =~ "kafka.Kafka" ]]; then
-    ISKAFKASERVER="true"
-fi
-
 base_dir=$(dirname $0)/..
 
 # create logs directory
@@ -39,24 +32,17 @@ if [ ! -d "$LOG_DIR" ]; then
 fi
 
 if [ -z "$SCALA_VERSION" ]; then
-	SCALA_VERSION=2.10.6
+	SCALA_VERSION=2.10.5
 fi
 
 if [ -z "$SCALA_BINARY_VERSION" ]; then
 	SCALA_BINARY_VERSION=2.10
 fi
 
-# run kafka-env.sh
-KAFKA_ENV=$base_dir/config/kafka-env.sh
-if [ -f $KAFKA_ENV ]; then
-    . $KAFKA_ENV
-fi
-
 # run ./gradlew copyDependantLibs to get all dependant jars in a local dir
-shopt -s nullglob
-for dir in $base_dir/core/build/dependant-libs-${SCALA_VERSION}*;
+for file in $base_dir/core/build/dependant-libs-${SCALA_VERSION}*/*.jar;
 do
-  CLASSPATH=$CLASSPATH:$dir/*
+  CLASSPATH=$CLASSPATH:$file
 done
 
 for file in $base_dir/examples/build/libs//kafka-examples*.jar;
@@ -79,40 +65,16 @@ do
   CLASSPATH=$CLASSPATH:$file
 done
 
-for file in $base_dir/stream/build/libs/kafka-streams*.jar;
-do
-  CLASSPATH=$CLASSPATH:$file
-done
-
-for file in $base_dir/tools/build/libs/kafka-tools*.jar;
-do
-  CLASSPATH=$CLASSPATH:$file
-done
-
-for dir in $base_dir/tools/build/dependant-libs-${SCALA_VERSION}*;
-do
-  CLASSPATH=$CLASSPATH:$dir/*
-done
-
-for cc_pkg in "api" "runtime" "file" "json" "tools"
-do
-  for file in $base_dir/connect/${cc_pkg}/build/libs/connect-${cc_pkg}*.jar;
-  do
-    CLASSPATH=$CLASSPATH:$file
-  done
-  if [ -d "$base_dir/connect/${cc_pkg}/build/dependant-libs" ] ; then
-    CLASSPATH=$CLASSPATH:$base_dir/connect/${cc_pkg}/build/dependant-libs/*
-  fi
-done
-
 # classpath addition for release
-CLASSPATH=$CLASSPATH:$base_dir/libs/*
+for file in $base_dir/libs/*.jar;
+do
+  CLASSPATH=$CLASSPATH:$file
+done
 
 for file in $base_dir/core/build/libs/kafka_${SCALA_BINARY_VERSION}*.jar;
 do
   CLASSPATH=$CLASSPATH:$file
 done
-shopt -u nullglob
 
 # JMX settings
 if [ -z "$KAFKA_JMX_OPTS" ]; then
@@ -122,11 +84,6 @@ fi
 # JMX port to use
 if [  $JMX_PORT ]; then
   KAFKA_JMX_OPTS="$KAFKA_JMX_OPTS -Dcom.sun.management.jmxremote.port=$JMX_PORT "
-fi
-
-# Log directory to use
-if [ "x$LOG_DIR" = "x" ]; then
-    LOG_DIR="$base_dir/logs"
 fi
 
 # Log4j settings
@@ -161,13 +118,7 @@ fi
 #JAAS config file params
 if [ -z "$KAFKA_KERBEROS_PARAMS" ]; then
     KAFKA_KERBEROS_PARAMS=""
-else
-    # check client kerberos params present than it takes precedence
-    if [ ! -z "$KAFKA_KERBEROS_PARAMS" ] && [ ! -z "$KAFKA_CLIENT_KERBEROS_PARAMS" ]; then
-        KAFKA_KERBEROS_PARAMS=$KAFKA_CLIENT_KERBEROS_PARAMS
-    fi
 fi
-
 while [ $# -gt 0 ]; do
   COMMAND=$1
   case $COMMAND in
