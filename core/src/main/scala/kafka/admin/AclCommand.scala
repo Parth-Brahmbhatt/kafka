@@ -47,6 +47,20 @@ object AclCommand {
 
     opts.checkArgs()
 
+    var authorizerProperties = Map.empty[String, Any]
+    if (opts.options.has(opts.authorizerPropertiesOpt)) {
+      val props = opts.options.valuesOf(opts.authorizerPropertiesOpt).asScala.map(_.split("="))
+      props.foreach(pair => authorizerProperties += (pair(0).trim -> pair(1).trim))
+    }
+
+    if(opts.options.has(opts.migrateOpt)) {
+      migrateAcl(authorizerProperties)
+    }
+
+    val authorizerClass = opts.options.valueOf(opts.authorizerOpt)
+    val authZ: Authorizer = CoreUtils.createObject(authorizerClass)
+    authZ.configure(authorizerProperties.asJava)
+
     try {
       if (opts.options.has(opts.addOpt))
         addAcl(opts)
@@ -269,6 +283,89 @@ object AclCommand {
     }
   }
 
+  private def migrateAcl(configs: Map[String, Any]) {
+    val props = new java.util.Properties()
+    configs foreach { case (key, value) => props.put(key, value.toString) }
+    val kafkaConfig = KafkaConfig.fromProps(props)
+    val zkUrl = configs.getOrElse(SimpleAclAuthorizer.ZkUrlProp, kafkaConfig.zkConnect).toString
+    val zkConnectionTimeoutMs = configs.getOrElse(SimpleAclAuthorizer.ZkConnectionTimeOutProp, kafkaConfig.zkConnectionTimeoutMs).toString.toInt
+    val zkSessionTimeOutMs = configs.getOrElse(SimpleAclAuthorizer.ZkSessionTimeOutProp, kafkaConfig.zkSessionTimeoutMs).toString.toInt
+
+    val zkUtils = ZkUtils(zkUrl,
+      zkConnectionTimeoutMs,
+      zkSessionTimeOutMs,
+      JaasUtils.isZkSecurityEnabled())
+
+    val validResourceTypeNames = ResourceType.values.map(_.name)
+    val invalidResourceTypes = zkUtils.getChildren(SimpleAclAuthorizer.AclZkPath).filter(resourceType => !validResourceTypeNames.contains(resourceType))
+    for (invalidResourceType <- invalidResourceTypes) {
+      val resourceNames = zkUtils.getChildren(s"${SimpleAclAuthorizer.AclZkPath}/$invalidResourceType")
+      val resourceType = getValidResourceType(invalidResourceType)
+      for(resourceName <- resourceNames) {
+        var acls = Set.empty[Acl]
+        println(s"migration of acls for $invalidResourceType-$resourceName is in progress")
+        val aclJson = zkUtils.readData(s"${SimpleAclAuthorizer.AclZkPath}/$invalidResourceType/$resourceName")._1
+        val aclList = Json.parseFull(aclJson).get.asInstanceOf[Map[String, Any]](Acl.AclsKey).asInstanceOf[List[Map[String, Any]]]
+        for (aclMap <- aclList) {
+          val hosts = aclMap("hosts").asInstanceOf[List[String]]
+          val operations = aclMap("operations").asInstanceOf[List[String]]
+          val principals = aclMap("principals").asInstanceOf[List[String]]
+          val permissionType = aclMap("permissionType").toString
+          for (operation <- operations) {
+            for (host <- hosts) {
+              for (principal <- principals)
+                acls = acls + new Acl(getValidPrincipal(principal), getValidPermissionType(permissionType), host, getValidOpertion(operation))
+            }
+          }
+        }
+
+        zkUtils.createPersistentPath(s"${SimpleAclAuthorizer.AclZkPath}/$resourceType/$resourceName", Json.encode(Acl.toJsonCompatibleMap(acls)))
+        println(s"migrated acls from $invalidResourceType-$resourceName to $resourceType-$resourceName")
+      }
+    }
+    println("Done Migrating all old acls to new acls, will now attempt to delete the old acls now.")
+
+    for (invalidResourceType <- invalidResourceTypes) {
+      zkUtils.deletePathRecursive(s"${SimpleAclAuthorizer.AclZkPath}/$invalidResourceType")
+    }
+
+    println("All old acls are now deleted and migrated to new version of acl.")
+    System.exit(0)
+  }
+
+  private def getValidResourceType(resourceType: String): ResourceType  = {
+    resourceType match {
+      case "TOPIC" => Topic
+      case "CONSUMER_GROUP" => Group
+      case "CLUSTER" => Cluster
+    }
+  }
+
+  private def getValidPrincipal(principal: String): KafkaPrincipal = {
+    val principalName = principal.split(":")(1)
+    new KafkaPrincipal(KafkaPrincipal.USER_TYPE, principalName)
+  }
+
+  private def getValidPermissionType(permissionType: String): PermissionType = {
+    permissionType.toUpperCase match {
+      case "ALLOW" => Allow
+      case "DENY" => Deny
+    }
+  }
+
+  private def getValidOpertion(operation: String): Operation = {
+    operation.toUpperCase match {
+      case "READ" => Read
+      case "WRITE" => Write
+      case "CLUSTER_ACTION" => ClusterAction
+      case "CREATE" => Create
+      case "DESCRIBE" => Describe
+      case "DELETE" => Delete
+      case "ALTER" => Alter
+      case "ALL" => All
+    }
+  }
+
   private def getResourceToAcls(opts: AclCommandOptions): Map[Resource, Set[Acl]] = {
     var resourceToAcls = Map.empty[Resource, Set[Acl]]
 
@@ -429,10 +526,14 @@ object AclCommand {
     val addOpt = parser.accepts("add", "Indicates you are trying to add acls.")
     val removeOpt = parser.accepts("remove", "Indicates you are trying to remove acls.")
     val listOpt = parser.accepts("list", "List acls for the specified resource, use --topic <topic> or --group <group> or --cluster to specify a resource.")
+
     val upgradeAclsOpt = parser.accepts("upgradeAcls", "Indicates you are trying to migrate from older version of acl to newer version of acl. The migration only works if no resource exist" +
       "for which some acls are in older version and some are in newer.")
     val downgradeAclsOpt = parser.accepts("downgradeAcls", "Indicates you are trying to migrate from newer version of acl to older version of acl. The migration only works if no resource exist" +
       "for which some acls in older format already exits.")
+    val migrateOpt = parser.accepts("migrate", "Indicates you are trying to migrate from older version of acl to newer version of acl. The migration only works if no resource exist" +
+      "for which some acls are in older version and some are in newer.")
+
 
     val operationsOpt = parser.accepts("operation", "Operation that is being allowed or denied. Valid operation names are: " + Newline +
       Operation.values.map("\t" + _).mkString(Newline) + Newline)
@@ -481,13 +582,13 @@ object AclCommand {
     def checkArgs() {
       CommandLineUtils.checkRequiredArgs(parser, options, authorizerPropertiesOpt)
 
-      val actions = Seq(addOpt, removeOpt, listOpt, upgradeAclsOpt, downgradeAclsOpt).count(options.has)
+
+      val actions = Seq(addOpt, removeOpt, listOpt, migrateOpt).count(options.has)
       if (actions != 1)
-        CommandLineUtils.printUsageAndDie(parser, "Command must include exactly one action: --list, --add, --remove, --upgradeAcls, --downgradeAcls. ")
+        CommandLineUtils.printUsageAndDie(parser, "Command must include exactly one action: --list, --add, --remove, --migrate. ")
 
       CommandLineUtils.checkInvalidArgs(parser, options, listOpt, Set(producerOpt, consumerOpt, allowHostsOpt, allowPrincipalsOpt, denyHostssOpt, denyPrincipalsOpt))
-      CommandLineUtils.checkInvalidArgs(parser, options, upgradeAclsOpt, Set(producerOpt, consumerOpt, allowHostsOpt, allowPrincipalsOpt, denyHostssOpt, denyPrincipalsOpt, clusterOpt, topicOpt, groupOpt, downgradeAclsOpt))
-      CommandLineUtils.checkInvalidArgs(parser, options, downgradeAclsOpt, Set(producerOpt, consumerOpt, allowHostsOpt, allowPrincipalsOpt, denyHostssOpt, denyPrincipalsOpt, clusterOpt, topicOpt, groupOpt, upgradeAclsOpt))
+      CommandLineUtils.checkInvalidArgs(parser, options, migrateOpt, Set(producerOpt, consumerOpt, allowHostsOpt, allowPrincipalsOpt, denyHostssOpt, denyPrincipalsOpt, clusterOpt, topicOpt, groupOpt))
 
       //when --producer or --consumer is specified , user should not specify operations as they are inferred and we also disallow --deny-principals and --deny-hosts.
       CommandLineUtils.checkInvalidArgs(parser, options, producerOpt, Set(operationsOpt, denyPrincipalsOpt, denyHostssOpt))
