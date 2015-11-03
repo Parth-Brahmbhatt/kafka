@@ -134,7 +134,7 @@ object SimpleConsumerShell extends Logging {
                        .maxWait(maxWaitMs)
                        .minBytes(ConsumerConfig.MinFetchBytes)
 
-    if (securityProtocol == SecurityProtocol.SASL_PLAINTEXT) {
+    if (CoreUtils.isSaslProtocol(securityProtocol)) {
       val saslConfigs = new java.util.HashMap[String, Any]()
       saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
       saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)

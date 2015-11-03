@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -64,20 +64,20 @@ public class DataGenerator {
 		_count = props.getInt("event.count");
 
 		_offsetsDir = _props.getProperty("input");
-		
+
 		// initialize kafka producer to generate count events
 		String serverUri = _props.getProperty("kafka.server.uri");
 		_uri = new URI (serverUri);
-		
+
 		System.out.println("server uri:" + _uri.toString());
         Properties producerProps = new Properties();
         producerProps.put("metadata.broker.list", formatAddress(_uri.getHost(), _uri.getPort()));
         producerProps.put("send.buffer.bytes", String.valueOf(TCP_BUFFER_SIZE));
         producerProps.put("connect.timeout.ms", String.valueOf(CONNECT_TIMEOUT));
         producerProps.put("reconnect.interval", String.valueOf(RECONNECT_INTERVAL));
-        
+
 		_producer = new Producer(new ProducerConfig(producerProps));
-			
+
 	}
 
 	public void run() throws Exception {
@@ -95,7 +95,7 @@ public class DataGenerator {
 
 		// close the producer
 		_producer.close();
-		
+
 		// generate offset files
 		generateOffsets();
 	}
@@ -107,20 +107,20 @@ public class DataGenerator {
         Path outPath = new Path(_offsetsDir + Path.SEPARATOR + "1.dat");
         FileSystem fs = outPath.getFileSystem(conf);
         if (fs.exists(outPath)) fs.delete(outPath);
-        
+
         KafkaETLRequest request =
             new KafkaETLRequest(_topic, "tcp://" + formatAddress(_uri.getHost(), _uri.getPort()), 0);
 
         System.out.println("Dump " + request.toString() + " to " + outPath.toUri().toString());
         byte[] bytes = request.toString().getBytes("UTF-8");
         KafkaETLKey dummyKey = new KafkaETLKey();
-        SequenceFile.setCompressionType(conf, SequenceFile.CompressionType.NONE);
-        SequenceFile.Writer writer = SequenceFile.createWriter(fs, conf, outPath, 
+        //SequenceFile.setCompressionType(conf, SequenceFile.CompressionType.NONE);
+        SequenceFile.Writer writer = SequenceFile.createWriter(fs, conf, outPath,
                                         KafkaETLKey.class, BytesWritable.class);
         writer.append(dummyKey, new BytesWritable(bytes));
         writer.close();
     }
-    
+
 	public static void main(String[] args) throws Exception {
 
 		if (args.length < 1)
