@@ -117,7 +117,7 @@ private[kafka] class ZookeeperConsumerConnector(val config: ConsumerConfig,
   private val rebalanceTimer = new KafkaTimer(newTimer("RebalanceRateAndTime", TimeUnit.MILLISECONDS, TimeUnit.SECONDS, Map("clientId" -> config.clientId)))
   private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
 
-  if ( protocol == SecurityProtocol.SASL_PLAINTEXT) {
+  if (CoreUtils.isSaslProtocol(protocol)) {
     val saslConfigs = new java.util.HashMap[String, Any]()
     saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, config.saslKerberosKinitCmd)
     saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, config.saslKerberosTicketRenewJitter.toDouble)

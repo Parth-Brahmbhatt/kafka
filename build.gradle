@@ -75,7 +75,8 @@ rat {
     'gradlew',
     'gradlew.bat',
     '**/README.md',
-    '.reviewboardrc'
+    '.reviewboardrc',
+    'system_test/**'
   ])
 }
 
