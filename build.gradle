@@ -42,7 +42,10 @@ def jersey_version = '2.22.1'
 allprojects {
   apply plugin: 'idea'
   repositories {
-    mavenCentral()
+    maven {
+      url = "$repoUrl"
+    }
+    mavenLocal()
   }
 }
 
