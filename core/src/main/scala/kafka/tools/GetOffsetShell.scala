@@ -19,6 +19,7 @@
 package kafka.tools
 
 import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.security.AuthUtils
 
 import kafka.consumer._
 import joptsimple._
@@ -26,6 +27,7 @@ import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
 import kafka.common.TopicAndPartition
 import kafka.client.ClientUtils
 import kafka.utils.{ToolsUtils, CommandLineUtils}
+import kafka.common.security.LoginManager
 
 
 object GetOffsetShell {
@@ -82,8 +84,11 @@ object GetOffsetShell {
     val nOffsets = options.valueOf(nOffsetsOpt).intValue
     val maxWaitMs = options.valueOf(maxWaitMsOpt).intValue()
     val securityProtocol = SecurityProtocol.valueOf(options.valueOf(securityProtocolOpt).toString)
-
+    if (securityProtocol == SecurityProtocol.PLAINTEXTSASL) {
+      LoginManager.init(AuthUtils.LOGIN_CONTEXT_CLIENT)
+    }
     val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, clientId, maxWaitMs, securityProtocol = securityProtocol).topicsMetadata
+
     if(topicsMetadata.size != 1 || !topicsMetadata(0).topic.equals(topic)) {
       System.err.println(("Error: no valid topic metadata for topic: %s, " + " probably the topic does not exist, run ").format(topic) +
         "kafka-list-topic.sh to verify")
