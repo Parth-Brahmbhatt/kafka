@@ -23,7 +23,7 @@ import joptsimple._
 import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
 import kafka.common.TopicAndPartition
 import kafka.client.ClientUtils
-import kafka.utils.{ToolsUtils, CommandLineUtils}
+import kafka.utils.{ToolsUtils, CommandLineUtils, CoreUtils}
 import kafka.common.security.LoginManager
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.config.SaslConfigs
@@ -85,7 +85,7 @@ object GetOffsetShell {
     val nOffsets = options.valueOf(nOffsetsOpt).intValue
     val maxWaitMs = options.valueOf(maxWaitMsOpt).intValue()
     val securityProtocol = SecurityProtocol.valueOf(options.valueOf(securityProtocolOpt).toString)
-    if (securityProtocol == SecurityProtocol.SASL_PLAINTEXT) {
+    if (CoreUtils.isSaslProtocol(securityProtocol)) {
       val saslConfigs = new java.util.HashMap[String, Any]()
       saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)
       saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, SaslConfigs.DEFAULT_KERBEROS_TICKET_RENEW_JITTER)

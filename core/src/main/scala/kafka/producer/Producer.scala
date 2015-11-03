@@ -41,7 +41,7 @@ class Producer[K,V](val config: ProducerConfig,
   private val lock = new Object()
   private val protocol = SecurityProtocol.valueOf(config.securityProtocol)
 
-  if(protocol == SecurityProtocol.SASL_PLAINTEXT) {
+  if(CoreUtils.isSaslProtocol(protocol)) {
     val saslConfigs = new java.util.HashMap[String, Any]()
     saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, config.saslKerberosKinitCmd)
     saslConfigs.put(SaslConfigs.SASL_KERBEROS_TICKET_RENEW_JITTER, config.saslKerberosTicketRenewJitter.toDouble)

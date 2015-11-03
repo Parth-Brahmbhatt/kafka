@@ -20,7 +20,7 @@ package kafka.network
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException;
 import java.nio.channels._
-import kafka.utils.{nonthreadsafe, Logging, SystemTime}
+import kafka.utils.{nonthreadsafe, Logging, SystemTime, CoreUtils}
 import kafka.api.RequestOrResponse
 import kafka.common.security.LoginManager
 import org.apache.kafka.common.security.auth.{PrincipalBuilder, DefaultPrincipalBuilder}
@@ -145,7 +145,7 @@ class BlockingChannel( val host: String,
     val transportLayer = new BlockingPlaintextTransportLayer(socketChannel)
     var authenticator : Authenticator = null
     val principalBuilder = new DefaultPrincipalBuilder()
-    if (protocol == SecurityProtocol.SASL_PLAINTEXT)
+    if (CoreUtils.isSaslProtocol(protocol))
       authenticator = new SaslClientAuthenticator(id, LoginManager.subject, LoginManager.serviceName,
         socketChannel.socket().getInetAddress().getHostName())
     else

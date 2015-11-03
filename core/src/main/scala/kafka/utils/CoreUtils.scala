@@ -308,4 +308,8 @@ object CoreUtils extends Logging {
     val listenerList = parseCsvList(listeners)
     listenerList.map(listener => EndPoint.createEndPoint(listener)).map(ep => ep.protocolType -> ep).toMap
   }
+
+  def isSaslProtocol(protocol: SecurityProtocol): Boolean = {
+    protocol == SecurityProtocol.SASL_PLAINTEXT || protocol == SecurityProtocol.PLAINTEXTSASL
+  }
 }

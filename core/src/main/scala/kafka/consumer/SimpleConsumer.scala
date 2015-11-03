@@ -43,7 +43,7 @@ class SimpleConsumer(val host: String,
                      val protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT) extends Logging {
 
   ConsumerConfig.validateClientId(clientId)
-  if (protocol == SecurityProtocol.SASL_PLAINTEXT) {
+  if (CoreUtils.isSaslProtocol(protocol)) {
     if (!LoginManager.isStarted.get()) {
       val saslConfigs = new java.util.HashMap[String, Any]()
       saslConfigs.put(SaslConfigs.SASL_KERBEROS_KINIT_CMD, SaslConfigs.DEFAULT_KERBEROS_KINIT_CMD)

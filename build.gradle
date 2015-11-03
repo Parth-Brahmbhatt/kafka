@@ -60,25 +60,24 @@ ext {
 
 apply from: file('wrapper.gradle')
 apply from: file('scala.gradle')
+apply from: file('gradle/rat.gradle')
 
-if (new File('.git').exists()) {
-  apply from: file('gradle/rat.gradle')
-  rat {
-    // Exclude everything under the directory that git should be ignoring via .gitignore or that isn't checked in. These
-    // restrict us only to files that are checked in or are staged.
-    def repo = Grgit.open(project.file('.'))
-    excludes = new ArrayList<String>(repo.clean(ignore: false, directories: true, dryRun: true))
-    // And some of the files that we have checked in should also be excluded from this check
-    excludes.addAll([
-        '**/.git/**',
-        '**/build/**',
-        'CONTRIBUTING.md',
-        'gradlew',
-        'gradlew.bat',
-        '**/README.md',
-        '.reviewboardrc'
-    ])
-  }
+rat {
+  // Exclude everything under the directory that git should be ignoring via .gitignore or that isn't checked in. These
+  // restrict us only to files that are checked in or are staged.
+  def repo = Grgit.open(project.file('.'))
+  excludes = new ArrayList<String>(repo.clean(ignore: false, directories: true, dryRun: true))
+  // And some of the files that we have checked in should also be excluded from this check
+  excludes.addAll([
+    '**/.git/**',
+    '**/build/**',
+    'CONTRIBUTING.md',
+    'gradlew',
+    'gradlew.bat',
+    '**/README.md',
+    '.reviewboardrc',
+    'system_test/**'
+  ])
 }
 
 subprojects {
@@ -230,18 +229,18 @@ for ( sv in ['2_10_6', '2_11_7'] ) {
   }
 }
 
-def connectPkgs = ['connect:api', 'connect:runtime', 'connect:json', 'connect:file']
+def connectPkgs = ['connect:api', 'connect:runtime', 'connect:json', 'connect:file', 'connect:tools']
 def pkgs = ['clients', 'examples', 'log4j-appender', 'tools', 'streams'] + connectPkgs
 
 tasks.create(name: "jarConnect", dependsOn: connectPkgs.collect { it + ":jar" }) {}
-tasks.create(name: "jarAll", dependsOn: ['jar_core_2_10_6', 'jar_core_2_11_7'] + pkgs.collect { it + ":jar" }) { }
+tasks.create(name: "jarAll", dependsOn: ['jar_core_2_10_5', 'jar_core_2_11_7'] + pkgs.collect { it + ":jar" }) { }
 
 tasks.create(name: "srcJarAll", dependsOn: ['srcJar_2_10_6', 'srcJar_2_11_7'] + pkgs.collect { it + ":srcJar" }) { }
 
 tasks.create(name: "docsJarAll", dependsOn: ['docsJar_2_10_6', 'docsJar_2_11_7'] + pkgs.collect { it + ":docsJar" }) { }
 
 tasks.create(name: "testConnect", dependsOn: connectPkgs.collect { it + ":test" }) {}
-tasks.create(name: "testAll", dependsOn: ['test_core_2_10_6', 'test_core_2_11_7'] + pkgs.collect { it + ":test" }) { }
+tasks.create(name: "testAll", dependsOn: ['test_core_2_10_5', 'test_core_2_11_7'] + pkgs.collect { it + ":test" }) { }
 
 tasks.create(name: "releaseTarGzAll", dependsOn: ['releaseTarGz_2_10_6', 'releaseTarGz_2_11_7']) {
 }
@@ -377,11 +376,52 @@ project(':core') {
     archives testJar
   }
 
-  tasks.create(name: "copyDependantTestLibs", type: Copy) {
-    from (configurations.testRuntime) {
-      include('*.jar')
-    }
-    into "$buildDir/dependant-testlibs"
+project(':contrib:hadoop-consumer') {
+  archivesBaseName = "kafka-hadoop-consumer"
+
+  dependencies {
+    compile project(':core')
+    compile "org.apache.avro:avro:1.4.0"
+    compile "org.apache.pig:pig:0.8.0"
+    compile "commons-logging:commons-logging:1.0.4"
+    compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
+    compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
+    compile "org.apache.hadoop:hadoop-core:0.20.2"
+  }
+
+  configurations {
+    // manually excludes some unnecessary dependencies
+    compile.exclude module: 'javax'
+    compile.exclude module: 'jms'
+    compile.exclude module: 'jmxri'
+    compile.exclude module: 'jmxtools'
+    compile.exclude module: 'mail'
+    compile.exclude module: 'netty'
+  }
+}
+
+project(':contrib:hadoop-producer') {
+  archivesBaseName = "kafka-hadoop-producer"
+
+  dependencies {
+    compile project(':core')
+    compile("org.apache.avro:avro:1.4.0") { force = true }
+    compile "org.apache.pig:pig:0.8.0"
+    compile "commons-logging:commons-logging:1.0.4"
+    compile "org.codehaus.jackson:jackson-core-asl:1.5.5"
+    compile "org.codehaus.jackson:jackson-mapper-asl:1.5.5"
+    compile "org.apache.hadoop:hadoop-core:0.20.2"
+    compile "org.apache.pig:piggybank:0.12.0"
+  }
+
+  configurations {
+    // manually excludes some unnecessary dependencies
+    compile.exclude module: 'javax'
+    compile.exclude module: 'jms'
+    compile.exclude module: 'jmxri'
+    compile.exclude module: 'jmxtools'
+    compile.exclude module: 'mail'
+    compile.exclude module: 'netty'
   }
 }
 
@@ -400,7 +440,7 @@ project(':clients') {
 
   dependencies {
     compile "$slf4japi"
-    compile 'org.xerial.snappy:snappy-java:1.1.2'
+    compile 'org.xerial.snappy:snappy-java:1.1.1.7'
     compile 'net.jpountz.lz4:lz4:1.2.0'
 
     testCompile 'org.bouncycastle:bcpkix-jdk15on:1.52'
