@@ -119,12 +119,15 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
 
   override def authorize(session: Session, operation: Operation, resource: Resource): Boolean = {
     val principal: KafkaPrincipal = session.principal
-    val host = session.clientAddress.getHostAddress
+    val localPrincipal: KafkaPrincipal = principalToLocalPlugin map (ptol => new KafkaPrincipal(principal.getPrincipalType, ptol.toLocal(principal))) getOrElse(null)
+    val host = session.host
     val acls = getAcls(resource) ++ getAcls(new Resource(resource.resourceType, Resource.WildCardResource))
+
+    val principals = if (localPrincipal != null) Set(principal, localPrincipal) else Set(principal)
 
 
     //check if there is any Deny acl match that would disallow this operation.
-    val denyMatch = aclMatch(session, operation, resource, principal, host, Deny, acls)
+    val denyMatch = principals.foldLeft(false)((result, principal) => result || aclMatch(session, operation, resource, principal, host, Deny, acls))
 
     //if principal is allowed to read or write we allow describe by default, the reverse does not apply to Deny.
     val ops = if (Describe == operation)
@@ -133,12 +136,13 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
       Set[Operation](operation)
 
     //now check if there is any allow acl that will allow this operation.
-    val allowMatch = ops.exists(operation =>  aclMatch(session, operation, resource, principal, host, Allow, acls))
+    val allowMatch = ops.exists(operation =>
+      principals.foldLeft(false)((result, principal) => result || aclMatch(session, operation, resource, principal, host, Allow, acls)))
 
     //we allow an operation if a user is a super user or if no acls are found and user has configured to allow all users
     //when no acls are found or if no deny acls are found and at least one allow acls matches.
-    val authorized = isSuperUser(operation, resource, principal, host) ||
-      isEmptyAclAndAuthorized(operation, resource, principal, host, acls) ||
+    val authorized = principals.foldLeft(false)(
+      (result, principal) => isSuperUser(operation, resource, principal, host) || isEmptyAclAndAuthorized(operation, resource, principal, host, acls)) ||
       (!denyMatch && allowMatch)
 
     logAuditMessage(principal, authorized, operation, resource, host)
