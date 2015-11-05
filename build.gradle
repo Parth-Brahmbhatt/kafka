@@ -262,7 +262,7 @@ project(':core') {
     compile project(':clients')
     compile "$slf4jlog4j"
     compile "org.scala-lang:scala-library:$scalaVersion"
-    compile 'org.apache.zookeeper:zookeeper:$zookeeperVersion'
+    compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
     compile 'com.101tec:zkclient:0.6'
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile 'net.sf.jopt-simple:jopt-simple:4.9'
