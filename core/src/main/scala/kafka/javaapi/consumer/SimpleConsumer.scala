@@ -20,6 +20,7 @@ package kafka.javaapi.consumer
 import kafka.utils.threadsafe
 import kafka.javaapi.FetchResponse
 import kafka.javaapi.OffsetRequest
+import org.apache.kafka.common.protocol.SecurityProtocol
 
 /**
  * A consumer of kafka messages
@@ -29,9 +30,15 @@ class SimpleConsumer(val host: String,
                      val port: Int,
                      val soTimeout: Int,
                      val bufferSize: Int,
-                     val clientId: String) {
+                     val clientId: String,
+                     val securityProtocol: String) {
 
-  private val underlying = new kafka.consumer.SimpleConsumer(host, port, soTimeout, bufferSize, clientId)
+  def this(host: String, port: Int, soTimeout: Int, bufferSize: Int, clientId: String) {
+    this(host, port, soTimeout, bufferSize, clientId, "PLAINTEXT")
+  }
+
+  private val protocol = SecurityProtocol.valueOf(securityProtocol)
+  private val underlying = new kafka.consumer.SimpleConsumer(host, port, soTimeout, bufferSize, clientId, protocol)
 
   /**
    *  Fetch a set of messages from a topic. This version of the fetch method
@@ -46,7 +53,7 @@ class SimpleConsumer(val host: String,
     import kafka.javaapi.Implicits._
     underlying.fetch(request)
   }
-  
+
   /**
    *  Fetch a set of messages from a topic.
    *
@@ -59,7 +66,7 @@ class SimpleConsumer(val host: String,
 
   /**
    *  Fetch metadata for a sequence of topics.
-   *  
+   *
    *  @param request specifies the versionId, clientId, sequence of topics.
    *  @return metadata for each topic in the request.
    */

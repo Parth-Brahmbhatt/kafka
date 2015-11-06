@@ -42,7 +42,10 @@ def jersey_version = '2.22.1'
 allprojects {
   apply plugin: 'idea'
   repositories {
-    mavenCentral()
+    maven {
+      url = "$repoUrl"
+    }
+    mavenLocal()
   }
 }
 
@@ -259,7 +262,7 @@ project(':core') {
     compile project(':clients')
     compile project(':log4j-appender')
     compile "org.scala-lang:scala-library:$scalaVersion"
-    compile 'org.apache.zookeeper:zookeeper:$zookeeperVersion'
+    compile "org.apache.zookeeper:zookeeper:$zookeeperVersion"
     compile 'com.101tec:zkclient:0.6'
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile 'net.sf.jopt-simple:jopt-simple:3.2'
