@@ -34,9 +34,9 @@ object AclCommand {
   val Delimiter = ','
   val Newline = scala.util.Properties.lineSeparator
   val ResourceTypeToValidOperations = Map[ResourceType, Set[Operation]] (
-    Topic -> Set(Read, Write, Describe),
-    Group -> Set(Read),
-    Cluster -> Set(Create, ClusterAction)
+    Topic -> Set(Read, Write, Describe, All),
+    Group -> Set(Read, All),
+    Cluster -> Set(Create, ClusterAction, All)
   )
 
   def main(args: Array[String]) {
@@ -145,7 +145,7 @@ object AclCommand {
           for (operation <- operations) {
             for (host <- hosts) {
               for (principal <- principals)
-                acls = acls + new Acl(KafkaPrincipal.fromString(principal), getUpgradePermissionType(permissionType), host, getUpgradeOpertion(operation))
+                acls = acls + new Acl(getUpgradePrincipal(principal), getUpgradePermissionType(permissionType), host, getUpgradeOpertion(operation))
             }
           }
         }
@@ -234,6 +234,10 @@ object AclCommand {
       case "ALTER" => Alter
       case "ALL" => All
     }
+  }
+
+  private def getUpgradePrincipal(principal: String): KafkaPrincipal  = {
+    new KafkaPrincipal(KafkaPrincipal.USER_TYPE, principal.split(KafkaPrincipal.SEPARATOR)(1))
   }
 
   private def getDowngradeResourceType(resourceType: ResourceType): String  = {
