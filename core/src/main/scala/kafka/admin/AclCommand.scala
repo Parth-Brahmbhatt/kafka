@@ -308,7 +308,7 @@ object AclCommand {
           for (operation <- operations) {
             for (host <- hosts) {
               for (principal <- principals)
-                acls = acls + new Acl(KafkaPrincipal.fromString(principal), getUpgradePermissionType(permissionType), host, getUpgradeOpertion(operation))
+                acls = acls + new Acl(getUpgradePrincipal(principal), getUpgradePermissionType(permissionType), host, getUpgradeOpertion(operation))
             }
           }
         }
@@ -397,6 +397,10 @@ object AclCommand {
       case "ALTER" => Alter
       case "ALL" => All
     }
+  }
+
+  private def getUpgradePrincipal(principal: String): KafkaPrincipal  = {
+    new KafkaPrincipal(KafkaPrincipal.USER_TYPE, principal.split(KafkaPrincipal.SEPARATOR)(1))
   }
 
   private def getDowngradeResourceType(resourceType: ResourceType): String  = {
