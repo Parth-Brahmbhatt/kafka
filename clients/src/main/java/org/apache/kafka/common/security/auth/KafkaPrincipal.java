@@ -60,8 +60,8 @@ public class KafkaPrincipal implements Principal {
 
         KafkaPrincipal that = (KafkaPrincipal) o;
 
-        if (!principalType.equals(that.principalType)) return false;
-        return name.equals(that.name);
+        if (!principalType.equalsIgnoreCase(that.principalType)) return false;
+        return name.equalsIgnoreCase(that.name);
 
     }
 
