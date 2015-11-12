@@ -291,9 +291,9 @@ object AclCommand {
     val zkUtils: ZkUtils = getZkUtil(configs)
 
     val newResourceTypeNames = ResourceType.values.map(_.name)
-    val oldResourceTypes = zkUtils.getChildren(SimpleAclAuthorizer.AclZkPath).filter(resourceType => !newResourceTypeNames.contains(resourceType))
+    val oldResourceTypes = zkUtils.getChildrenParentMayNotExist(SimpleAclAuthorizer.AclZkPath).filter(resourceType => !newResourceTypeNames.contains(resourceType))
     for (oldResourceType <- oldResourceTypes) {
-      val resourceNames = zkUtils.getChildren(s"${SimpleAclAuthorizer.AclZkPath}/$oldResourceType")
+      val resourceNames = zkUtils.getChildrenParentMayNotExist(s"${SimpleAclAuthorizer.AclZkPath}/$oldResourceType")
       val resourceType = getUpgradeResourceType(oldResourceType)
       for(resourceName <- resourceNames) {
         var acls = Set.empty[Acl]
