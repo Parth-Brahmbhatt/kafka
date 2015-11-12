@@ -69,31 +69,10 @@ object AclCommand {
       props.foreach(pair => authorizerProperties += (pair(0).trim -> pair(1).trim))
     }
 
-    if(opts.options.has(opts.upgradeAclsOpt)) {
-      upgradeAclsToNewFormat(authorizerProperties)
-    }
-
     val authorizerClass = opts.options.valueOf(opts.authorizerOpt)
     val authZ = CoreUtils.createObject[Authorizer](authorizerClass)
     authZ.configure(authorizerProperties.asJava)
-
-    if(opts.options.has(opts.downgradeAclsOpt)) {
-      downgradeAclsToOldFormat(authorizerProperties, authZ)
-    }
-
-    try {
-      if (opts.options.has(opts.addOpt))
-        addAcl(authZ, opts)
-      else if (opts.options.has(opts.removeOpt))
-        removeAcl(authZ, opts)
-      else if (opts.options.has(opts.listOpt))
-        listAcl(authZ, opts)
-    } catch {
-      case e: Throwable =>
-        println(s"Error while executing topic Acl command ${e.getMessage}")
-        println(Utils.stackTrace(e))
-        System.exit(-1)
-    }
+    authZ
   }
 
   private def addAcl(opts: AclCommandOptions) {

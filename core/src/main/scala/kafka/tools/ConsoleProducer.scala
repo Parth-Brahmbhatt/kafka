@@ -77,7 +77,10 @@ object ConsoleProducer {
   }
 
   def getOldProducerProps(config: ProducerConfig): Properties = {
-    val props = producerProps(config)
+
+    val props = new Properties
+
+    props.putAll(config.extraProducerProps)
 
     props.put("metadata.broker.list", config.brokerList)
     props.put("compression.codec", config.compressionCodec)
@@ -110,7 +113,10 @@ object ConsoleProducer {
   }
 
   def getNewProducerProps(config: ProducerConfig): Properties = {
-    val props = producerProps(config)
+
+    val props = new Properties
+
+    props.putAll(config.extraProducerProps)
 
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, config.brokerList)
     props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, config.compressionCodec)
@@ -246,15 +252,21 @@ object ConsoleProducer {
       .withRequiredArg
       .describedAs("config file")
       .ofType(classOf[String])
-    val useOldProducerOpt = parser.accepts("old-producer", "Use the old producer implementation.")
+   val securityProtocolOpt = parser.accepts("security-protocol", "The security protocol to use to connect to broker.")
+      .withRequiredArg
+      .describedAs("security-protocol")
+      .ofType(classOf[String])
+      .defaultsTo("PLAINTEXT")
 
+    val useNewProducerOpt = parser.accepts("new-producer", "Use the old producer implementation.")
+    
     val options = parser.parse(args : _*)
     if(args.length == 0)
       CommandLineUtils.printUsageAndDie(parser, "Read data from standard input and publish it to Kafka.")
     CommandLineUtils.checkRequiredArgs(parser, options, topicOpt, brokerListOpt)
 
     import scala.collection.JavaConversions._
-    val useOldProducer = options.has(useOldProducerOpt)
+    val useNewProducer = options.has(useNewProducerOpt)
     val topic = options.valueOf(topicOpt)
     val brokerList = options.valueOf(brokerListOpt)
     ToolsUtils.validatePortOrDie(parser,brokerList)
