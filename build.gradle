@@ -384,6 +384,14 @@ project(':core') {
     archives testJar
   }
 
+    tasks.create(name: "copyDependantTestLibs", type: Copy) {
+        from (configurations.testRuntime) {
+            include('*.jar')
+        }
+        into "$buildDir/dependant-testlibs"
+    }
+}
+
 project(':contrib:hadoop-consumer') {
   archivesBaseName = "kafka-hadoop-consumer"
 
