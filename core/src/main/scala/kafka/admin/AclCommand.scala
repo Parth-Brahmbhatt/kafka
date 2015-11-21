@@ -72,7 +72,8 @@ object AclCommand {
     val authorizerClass = opts.options.valueOf(opts.authorizerOpt)
     val authZ = CoreUtils.createObject[Authorizer](authorizerClass)
     authZ.configure(authorizerProperties.asJava)
-    authZ
+    try f(authZ)
+    finally CoreUtils.swallow(authZ.close())
   }
 
   private def addAcl(opts: AclCommandOptions) {
@@ -444,7 +445,6 @@ object AclCommand {
       .withRequiredArg
       .describedAs("allow-principals")
       .ofType(classOf[String])
-      .withValuesSeparatedBy(Delimiter)
 
     val denyPrincipalsOpt = parser.accepts("deny-principals", "Comma separated list of principals where principal is in " +
       "principalType: name format. By default anyone not in --allow-principals list is denied access. " +
@@ -455,7 +455,6 @@ object AclCommand {
       .withRequiredArg
       .describedAs("deny-principals")
       .ofType(classOf[String])
-      .withValuesSeparatedBy(Delimiter)
 
     val allowHostsOpt = parser.accepts("allow-host", "Host from which principals listed in --allow-principal will have access. " +
       "If you have specified --allow-principal then the default for this option will be set to * which allows access from all hosts.")
