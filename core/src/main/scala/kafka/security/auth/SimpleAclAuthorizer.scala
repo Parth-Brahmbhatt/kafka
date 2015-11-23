@@ -120,7 +120,7 @@ class SimpleAclAuthorizer extends Authorizer with Logging {
   override def authorize(session: Session, operation: Operation, resource: Resource): Boolean = {
     val principal: KafkaPrincipal = session.principal
     val localPrincipal: KafkaPrincipal = principalToLocalPlugin map (ptol => new KafkaPrincipal(principal.getPrincipalType, ptol.toLocal(principal))) getOrElse(null)
-    val host = session.host
+    val host = session.clientAddress.getHostAddress
     val acls = getAcls(resource) ++ getAcls(new Resource(resource.resourceType, Resource.WildCardResource))
 
     val principals = if (localPrincipal != null) Set(principal, localPrincipal) else Set(principal)

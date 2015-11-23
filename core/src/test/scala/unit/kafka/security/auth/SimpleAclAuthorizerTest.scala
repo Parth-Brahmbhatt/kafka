@@ -132,12 +132,12 @@ class SimpleAclAuthorizerTest extends ZooKeeperTestHarness {
     val testAuthoizer: SimpleAclAuthorizer = new SimpleAclAuthorizer
     testAuthoizer.configure(cfg.originals)
 
-    val host = "random-host"
+    val host = InetAddress.getByName("192.168.2.1")
     val kerberosPrincipal = s"$username/$host@EXAMPLE.COM"
     val user = new KafkaPrincipal(KafkaPrincipal.USER_TYPE, kerberosPrincipal)
     val session = new Session(user, host)
 
-    val allowAll = new Acl(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, username), Allow, host, All)
+    val allowAll = new Acl(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, username), Allow, host.getHostAddress, All)
     val acls = Set[Acl](allowAll)
 
     changeAclAndVerify(Set.empty[Acl], acls, Set.empty[Acl])
