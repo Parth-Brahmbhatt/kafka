@@ -515,16 +515,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         return Collections.unmodifiableMap(this.metrics.metrics());
     }
 
-    /**
-     * Close this producer. This method blocks until all previously sent requests complete.
-     * This method is equivalent to <code>close(Long.MAX_VALUE, TimeUnit.MILLISECONDS)</code>.
-     * <p>
-     * <strong>If close() is called from {@link Callback}, a warning message will be logged and close(0, TimeUnit.MILLISECONDS)
-     * will be called instead. We do this because the sender thread would otherwise try to join itself and
-     * block forever.</strong>
-     * <p/>
-     * @throws InterruptException If the thread is interrupted while blocked
-     */
     @Override
     public void close() {
         close(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
