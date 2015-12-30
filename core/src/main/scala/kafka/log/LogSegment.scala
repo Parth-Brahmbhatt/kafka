@@ -183,7 +183,8 @@ class LogSegment(val log: FileMessageSet,
                 entry.offset
               case _ =>
                 ByteBufferMessageSet.deepIterator(entry.message).next().offset
-          }
+            }
+          println("adding to the index, validBytes " + validBytes + " lastIndexEntry "  +lastIndexEntry)
           index.append(startOffset, validBytes)
           lastIndexEntry = validBytes
         }
