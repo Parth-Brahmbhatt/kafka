@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -33,6 +33,7 @@ object DumpLogSegments {
     val parser = new OptionParser
     val printOpt = parser.accepts("print-data-log", "if set, printing the messages content when dumping data logs")
     val verifyOpt = parser.accepts("verify-index-only", "if set, just verify the index log without printing its content")
+    val indexSanityOpt = parser.accepts("verify-index-sanity", "if set, just verify the index sanity without printing its content")
     val filesOpt = parser.accepts("files", "REQUIRED: The comma separated list of data and index log files to be dumped")
                            .withRequiredArg
                            .describedAs("file1, file2, ...")
@@ -56,15 +57,16 @@ object DumpLogSegments {
       CommandLineUtils.printUsageAndDie(parser, "Parse a log file and dump its contents to the console, useful for debugging a seemingly corrupt log segment.")
 
     val options = parser.parse(args : _*)
-    
+
     CommandLineUtils.checkRequiredArgs(parser, options, filesOpt)
 
     val print = if(options.has(printOpt)) true else false
     val verifyOnly = if(options.has(verifyOpt)) true else false
+    val indexSanityOnly = if(options.has(indexSanityOpt)) true else false
     val files = options.valueOf(filesOpt).split(",")
     val maxMessageSize = options.valueOf(maxMessageSizeOpt).intValue()
     val isDeepIteration = if(options.has(deepIterationOpt)) true else false
-  
+
     val valueDecoder: Decoder[_] = CoreUtils.createObject[Decoder[_]](options.valueOf(valueDecoderOpt), new VerifiableProperties)
     val keyDecoder: Decoder[_] = CoreUtils.createObject[Decoder[_]](options.valueOf(keyDecoderOpt), new VerifiableProperties)
 
@@ -78,7 +80,7 @@ object DumpLogSegments {
         dumpLog(file, print, nonConsecutivePairsForLogFilesMap, isDeepIteration, maxMessageSize , valueDecoder, keyDecoder)
       } else if(file.getName.endsWith(Log.IndexFileSuffix)) {
         println("Dumping " + file)
-        dumpIndex(file, verifyOnly, misMatchesForIndexFilesMap, maxMessageSize)
+        dumpIndex(file, verifyOnly, indexSanityOnly, misMatchesForIndexFilesMap, maxMessageSize)
       }
     }
     misMatchesForIndexFilesMap.foreach {
@@ -98,16 +100,21 @@ object DumpLogSegments {
       }
     }
   }
-  
+
   /* print out the contents of the index */
   private def dumpIndex(file: File,
                         verifyOnly: Boolean,
+                        indexSanityOnly: Boolean,
                         misMatchesForIndexFilesMap: mutable.HashMap[String, List[(Long, Long)]],
                         maxMessageSize: Int) {
     val startOffset = file.getName().split("\\.")(0).toLong
+    val index = new OffsetIndex(file = file, baseOffset = startOffset)
+    if (indexSanityOnly) {
+      index.sanityCheck
+      return
+    }
     val logFile = new File(file.getAbsoluteFile.getParent, file.getName.split("\\.")(0) + Log.LogFileSuffix)
     val messageSet = new FileMessageSet(logFile, false)
-    val index = new OffsetIndex(file = file, baseOffset = startOffset)
     for(i <- 0 until index.entries) {
       val entry = index.entry(i)
       val partialFileMessageSet: FileMessageSet = messageSet.read(entry.position, maxMessageSize)
@@ -124,7 +131,7 @@ object DumpLogSegments {
         println("offset: %d position: %d".format(entry.offset + index.baseOffset, entry.position))
     }
   }
-  
+
   /* print out the contents of the log */
   private def dumpLog(file: File,
                       printContents: Boolean,
@@ -200,5 +207,5 @@ object DumpLogSegments {
       }
     }
   }
-  
+
 }

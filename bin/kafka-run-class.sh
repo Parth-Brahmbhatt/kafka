@@ -47,7 +47,7 @@ if [ -z "$SCALA_BINARY_VERSION" ]; then
 fi
 
 # run kafka-env.sh
-KAFKA_ENV=$base_dir/config/kafka-env.sh
+KAFKA_ENV=/usr/hdp/current/kafka-broker/config/kafka-env.sh
 if [ -f $KAFKA_ENV ]; then
     . $KAFKA_ENV
 fi
