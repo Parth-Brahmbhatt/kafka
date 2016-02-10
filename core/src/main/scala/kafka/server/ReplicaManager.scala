@@ -419,12 +419,20 @@ class ReplicaManager(val config: KafkaConfig,
                     fetchInfo: Map[TopicAndPartition, PartitionFetchInfo],
                     responseCallback: Map[TopicAndPartition, FetchResponsePartitionData] => Unit) {
 
+    val startTime = SystemTime.milliseconds
+
     val isFromFollower = replicaId >= 0
     val fetchOnlyFromLeader: Boolean = replicaId != Request.DebuggingConsumerId
     val fetchOnlyCommitted: Boolean = ! Request.isValidBrokerId(replicaId)
 
     // read from local logs
     val logReadResults = readFromLocalLog(fetchOnlyFromLeader, fetchOnlyCommitted, fetchInfo)
+
+    val endTime = SystemTime.milliseconds
+    val latency = (endTime - startTime)
+
+    if(latency > 500)
+      fatal(s"fetch request took ${latency} millisecond to load from log for fetchInfo = ${fetchInfo}")
 
     // if the fetch comes from the follower,
     // update its corresponding log end offset
@@ -440,11 +448,15 @@ class ReplicaManager(val config: KafkaConfig,
     //                        2) fetch request does not require any data
     //                        3) has enough data to respond
     //                        4) some error happens while reading data
-    if(timeout <= 0 || fetchInfo.size <= 0 || bytesReadable >= fetchMinBytes || errorReadingData) {
+      if(timeout <= 0 || fetchInfo.size <= 0 || bytesReadable >= fetchMinBytes || errorReadingData) {
       val fetchPartitionData = logReadResults.mapValues(result =>
         FetchResponsePartitionData(result.errorCode, result.hw, result.info.messageSet))
       responseCallback(fetchPartitionData)
     } else {
+//      val wtf = (timeout <= 0 || fetchInfo.size <= 0 || bytesReadable >= fetchMinBytes || errorReadingData)
+//      fatal(s"timeout = $timeout, fetchInfo.size = ${fetchInfo.size}, bytesReadable = $bytesReadable, fetchMinBytes = $fetchMinBytes, " +
+//        s"errorReadingData = $errorReadingData , (timeout <= 0 || fetchInfo.size <= 0 || bytesReadable >= fetchMinBytes || errorReadingData)  = $wtf")
+
       // construct the fetch results from the read results
       val fetchPartitionStatus = logReadResults.map { case (topicAndPartition, result) =>
         (topicAndPartition, FetchPartitionStatus(result.info.fetchOffsetMetadata, fetchInfo.get(topicAndPartition).get))

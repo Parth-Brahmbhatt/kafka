@@ -25,6 +25,7 @@ import kafka.common.UnknownTopicOrPartitionException
 import kafka.common.NotLeaderForPartitionException
 import kafka.common.TopicAndPartition
 import kafka.metrics.KafkaMetricsGroup
+import kafka.utils.SystemTime
 
 import scala.collection._
 
@@ -57,6 +58,8 @@ class DelayedFetch(delayMs: Long,
                    replicaManager: ReplicaManager,
                    responseCallback: Map[TopicAndPartition, FetchResponsePartitionData] => Unit)
   extends DelayedOperation(delayMs) {
+
+  val startTimeMs = SystemTime.milliseconds
 
   /**
    * The operation can be completed if:
@@ -132,6 +135,10 @@ class DelayedFetch(delayMs: Long,
       FetchResponsePartitionData(result.errorCode, result.hw, result.info.messageSet))
 
     responseCallback(fetchPartitionData)
+
+    if((SystemTime.milliseconds - startTimeMs) > 500) {
+      fatal(s"Delayed fetch Latency = ${SystemTime.milliseconds - startTimeMs}")
+    }
   }
 }
 

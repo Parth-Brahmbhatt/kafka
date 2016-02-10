@@ -574,6 +574,13 @@ private[kafka] class Processor(val id: Int,
     trace(written + " bytes written to " + socketChannel.socket.getRemoteSocketAddress() + " using key " + key)
     if(responseSend.complete) {
       response.request.updateRequestMetrics()
+
+      if((SystemTime.milliseconds - response.request.startTimeMs) > 500) {
+        val tmpReq = response.request
+        fatal(s"RequestId = ${tmpReq.requestId}, requestDequeueTimeMs = ${tmpReq.requestDequeueTimeMs - tmpReq.startTimeMs}, apiLocalCompleteTimeMs = ${tmpReq.apiLocalCompleteTimeMs - tmpReq.startTimeMs}" +
+          s"responseDequeueTimeMs =  ${tmpReq.responseDequeueTimeMs - tmpReq.startTimeMs}, responseCompleteTimeMs = ${tmpReq.responseCompleteTimeMs - tmpReq.startTimeMs}  " +
+          s"TotalTimeMs = ${SystemTime.milliseconds - tmpReq.startTimeMs}")
+      }
       cnxn.transmit = null
       key.attach(cnxn)
       trace("Finished writing, registering for read on connection " + socketChannel.socket.getRemoteSocketAddress())
