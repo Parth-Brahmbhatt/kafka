@@ -20,6 +20,8 @@ import java.util.Map;
 
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.security.JaasUtils;
+import org.apache.kafka.common.security.auth.KerberosPrincipalBuilder;
+import org.apache.kafka.common.security.auth.PrincipalBuilder;
 import org.apache.kafka.common.security.kerberos.KerberosShortNamer;
 import org.apache.kafka.common.security.kerberos.LoginManager;
 import org.apache.kafka.common.security.authenticator.SaslClientAuthenticator;
@@ -41,7 +43,7 @@ public class SaslChannelBuilder implements ChannelBuilder {
     private LoginManager loginManager;
     private SslFactory sslFactory;
     private Map<String, ?> configs;
-    private KerberosShortNamer kerberosShortNamer;
+    private PrincipalBuilder principalBuilder;
 
     public SaslChannelBuilder(Mode mode, LoginType loginType, SecurityProtocol securityProtocol) {
         this.mode = mode;
@@ -53,17 +55,7 @@ public class SaslChannelBuilder implements ChannelBuilder {
         try {
             this.configs = configs;
             this.loginManager = LoginManager.acquireLoginManager(loginType, configs);
-
-            String defaultRealm;
-            try {
-                defaultRealm = JaasUtils.defaultRealm();
-            } catch (Exception ke) {
-                defaultRealm = "";
-            }
-
-            List<String> principalToLocalRules = (List<String>) configs.get(SaslConfigs.SASL_KERBEROS_PRINCIPAL_TO_LOCAL_RULES);
-            if (principalToLocalRules != null)
-                kerberosShortNamer = KerberosShortNamer.fromUnparsedRules(defaultRealm, principalToLocalRules);
+            this.principalBuilder = new KerberosPrincipalBuilder();
 
             if (this.securityProtocol == SecurityProtocol.SASL_SSL) {
                 // Disable SSL client authentication as we are using SASL authentication
@@ -81,12 +73,12 @@ public class SaslChannelBuilder implements ChannelBuilder {
             TransportLayer transportLayer = buildTransportLayer(id, key, socketChannel);
             Authenticator authenticator;
             if (mode == Mode.SERVER)
-                authenticator = new SaslServerAuthenticator(id, loginManager.subject(), kerberosShortNamer, maxReceiveSize);
+                authenticator = new SaslServerAuthenticator(id, loginManager.subject(), maxReceiveSize);
             else
                 authenticator = new SaslClientAuthenticator(id, loginManager.subject(), loginManager.serviceName(),
                         socketChannel.socket().getInetAddress().getHostName());
-            // Both authenticators don't use `PrincipalBuilder`, so we pass `null` for now. Reconsider if this changes.
-            authenticator.configure(transportLayer, null, this.configs);
+            // ServerAuthenticator uses principalBuilder but ClientAuthenticator ignores it.
+            authenticator.configure(transportLayer, principalBuilder, this.configs);
             return new KafkaChannel(id, transportLayer, authenticator, maxReceiveSize);
         } catch (Exception e) {
             log.info("Failed to create channel due to ", e);

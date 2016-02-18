@@ -35,7 +35,6 @@ import javax.security.sasl.SaslException;
 
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.security.kerberos.KerberosName;
-import org.apache.kafka.common.security.kerberos.KerberosShortNamer;
 import org.ietf.jgss.GSSContext;
 import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
@@ -45,7 +44,6 @@ import org.ietf.jgss.Oid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.kafka.common.security.auth.KafkaPrincipal;
 import org.apache.kafka.common.network.Authenticator;
 import org.apache.kafka.common.network.NetworkSend;
 import org.apache.kafka.common.network.NetworkReceive;
@@ -59,7 +57,6 @@ public class SaslServerAuthenticator implements Authenticator {
     private final SaslServer saslServer;
     private final Subject subject;
     private final String node;
-    private final KerberosShortNamer kerberosNamer;
     private final int maxReceiveSize;
 
     // assigned in `configure`
@@ -68,27 +65,28 @@ public class SaslServerAuthenticator implements Authenticator {
     // buffers used in `authenticate`
     private NetworkReceive netInBuffer;
     private NetworkSend netOutBuffer;
+    private PrincipalBuilder principalBuilder;
 
-    public SaslServerAuthenticator(String node, final Subject subject, KerberosShortNamer kerberosNameParser, int maxReceiveSize) throws IOException {
+    public SaslServerAuthenticator(String node, final Subject subject, int maxReceiveSize) throws IOException {
         if (subject == null)
             throw new IllegalArgumentException("subject cannot be null");
         if (subject.getPrincipals().isEmpty())
             throw new IllegalArgumentException("subject must have at least one principal");
         this.node = node;
         this.subject = subject;
-        this.kerberosNamer = kerberosNameParser;
         this.maxReceiveSize = maxReceiveSize;
         saslServer = createSaslServer();
     }
 
     public void configure(TransportLayer transportLayer, PrincipalBuilder principalBuilder, Map<String, ?> configs) {
         this.transportLayer = transportLayer;
+        this.principalBuilder = principalBuilder;
     }
 
     private SaslServer createSaslServer() throws IOException {
         // server is using a JAAS-authenticated subject: determine service principal name and hostname from kafka server's subject.
         final SaslServerCallbackHandler saslServerCallbackHandler = new SaslServerCallbackHandler(
-                Configuration.getConfiguration(), kerberosNamer);
+                Configuration.getConfiguration(), principalBuilder);
         final Principal servicePrincipal = subject.getPrincipals().iterator().next();
         KerberosName kerberosName;
         try {
@@ -173,7 +171,7 @@ public class SaslServerAuthenticator implements Authenticator {
     }
 
     public Principal principal() {
-        return new KafkaPrincipal(KafkaPrincipal.USER_TYPE, saslServer.getAuthorizationID());
+        return this.principalBuilder.buildPrincipal(this.transportLayer, this);//new KafkaPrincipal(KafkaPrincipal.USER_TYPE, saslServer.getAuthorizationID());
     }
 
     public boolean complete() {
@@ -182,6 +180,7 @@ public class SaslServerAuthenticator implements Authenticator {
 
     public void close() throws IOException {
         saslServer.dispose();
+        this.principalBuilder.close();
     }
 
     private boolean flushNetOutBufferAndUpdateInterestOps() throws IOException {
@@ -197,5 +196,9 @@ public class SaslServerAuthenticator implements Authenticator {
         if (!netOutBuffer.completed())
             netOutBuffer.writeTo(transportLayer);
         return netOutBuffer.completed();
+    }
+
+    public SaslServer getSaslServer() {
+        return saslServer;
     }
 }
