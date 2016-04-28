@@ -1,0 +1,22 @@
+package kafkarestapi_data_definition;
+
+option java_package = "org.apache.kafka.rest";
+option java_outer_classname = "RestApiProto";
+option optimize_for = SPEED;
+
+message RestApiMessage {
+
+	// 1 is reserved in case we ever want a different id scheme later on
+	optional string namespace = 2;
+	optional string id = 3;
+	optional bytes ip_addr = 4;
+	optional bytes payload = 5;
+	optional sint64 timestamp = 6;
+	enum Operation {
+		CREATE_UPDATE = 0;
+		DELETE = 1;
+	}
+	optional Operation operation = 7 [default = CREATE_UPDATE];
+	optional string api_version = 8;
+	repeated string partition = 9;
+}

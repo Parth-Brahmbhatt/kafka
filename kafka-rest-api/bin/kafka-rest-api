@@ -1,0 +1,86 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+function usage() {
+  echo "Usage: $0 <server-port>"
+  exit 1
+}
+
+# Print usage if incorrect number of args
+[[ $# -ne 1 ]] && usage
+
+bin=`dirname "$0"`
+bin=`cd "$bin"; pwd`
+
+SERVER_PORT=$1
+SERVER_CLASS_NAME="org.apache.kafka.http.KafkaRestApi"
+NOW=`date "+%Y%m%d%H%M%S"`
+KAFKA_REST_API_OPTS="-Dserver.port=$SERVER_PORT -Dkafka-rest-api.log.dir=$bin/../logs"
+GC_OPTS="-XX:+PrintHeapAtGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintTenuringDistribution -Xloggc:$bin/../logs/gc.log.$NOW"
+JAVA_OPTS="$KAFKA_REST_API_OPTS -Xss128k -Xms1024m -Xmx1024m -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:NewRatio=3 -XX:+UseCompressedOops $GC_OPTS"
+
+export MALLOC_ARENA_MAX=2
+
+if [ "$KAFKA_REST_API_USER" = "" ]; then
+    KAFKA_REST_API_USER="$USER"
+fi
+
+if [ -d "/var/run/kafka-rest-api" ]; then
+    PIDFILE="/var/run/kafka-rest-api/kafka-rest-api.pid"
+else
+    PIDFILE="$bin/../kafka-rest-api.pid"
+fi
+
+# if this is a developer then use the main jar in the build directory
+if [ -d $bin/../target ]; then
+    MAIN_JAR_PATH="$bin/../target/kafka-rest-api-*.jar"
+    if [ "$DAEMON_DETACHED" = "" ]; then
+        DAEMON_DETACHED=false
+    fi
+else
+    MAIN_JAR_PATH="$bin/../kafka-rest-api-*.jar"
+    if [ "$DAEMON_DETACHED" = "" ]; then
+        DAEMON_DETACHED=true
+    f
+fi
+
+# add main jar
+for lib in `ls $MAIN_JAR_PATH`; do
+    CLASSPATH=${CLASSPATH}:$lib
+done
+
+# add dependency libs
+for lib in `ls $bin/../lib/*.jar`; do
+    CLASSPATH=${CLASSPATH}:$lib
+done
+
+# create logs dir if it doesn't exist
+if [ ! -d $bin/../logs ]; then
+    mkdir -p $bin/../logs
+fi
+
+if [ "$DAEMON_DETACHED" = false ]; then
+    java $JAVA_OPTS -cp $CLASSPATH $SERVER_CLASS_NAME
+    RETVAL=$?
+else
+    nohup java $JAVA_OPTS -cp $CLASSPATH $SERVER_CLASS_NAME > $bin/../logs/kafkarestapi.out 2>&1 < /dev/null &
+    PID=$!
+    RETVAL=$?
+
+    echo $PID > $PIDFILE
+fi
+
+exit $RETVAL
